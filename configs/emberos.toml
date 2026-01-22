@@ -1,0 +1,93 @@
+# EmberOS Configuration
+# Documentation: https://docs.emberos.org/config
+#
+# This is the default system configuration.
+# User-specific overrides can be placed in ~/.config/ember/emberos.toml
+
+[llm]
+# LLM server connection settings
+server_url = "http://127.0.0.1:8080"
+context_size = 8192
+temperature = 0.1
+max_tokens = 2048
+timeout = 120
+
+# Model path (for reference, actual loading handled by llama-server)
+# model_path = "/usr/local/share/ember/models/qwen2.5-vl-7b-instruct-q4_k_m.gguf"
+
+[gui]
+# GUI appearance settings
+theme = "dark"
+opacity = 0.95
+blur_radius = 20
+window_width = 800
+window_height = 700
+always_on_top = false
+show_in_tray = true
+animation_enabled = true
+font_size = 14
+
+[cli]
+# CLI settings
+color_enabled = true
+syntax_highlighting = true
+history_size = 1000
+autocomplete = true
+
+[memory]
+# Memory and storage settings
+embedding_model = "all-MiniLM-L6-v2"
+max_conversation_history = 100
+auto_backup = true
+backup_interval = 86400  # Daily
+
+[permissions]
+# Security and permission settings
+# Paths use ~ for home directory, * for wildcards
+
+# Allowed read paths
+filesystem_read_allowed = [
+    "~/*",
+    "/tmp/*",
+    "/usr/share/*"
+]
+
+# Blocked read paths (takes precedence)
+filesystem_read_blocked = [
+    "~/.ssh/*",
+    "~/.gnupg/*",
+    "~/.password-store/*",
+    "~/.aws/*",
+    "~/.kube/*"
+]
+
+# Allowed write paths
+filesystem_write_allowed = [
+    "~/Documents/*",
+    "~/Downloads/*",
+    "~/Desktop/*",
+    "~/Notes/*",
+    "/tmp/*"
+]
+
+# Maximum file size for operations (MB)
+max_file_size_mb = 100
+
+# Require confirmation for destructive operations
+require_confirmation_destructive = true
+
+# Network access (disabled by default for privacy)
+network_enabled = false
+allowed_hosts = []
+
+[daemon]
+# Daemon settings
+log_level = "INFO"
+max_concurrent_tasks = 5
+task_timeout = 120
+context_update_interval = 0.5
+
+# Advanced settings (usually don't need to change)
+# pid_file = "~/.cache/ember/emberd.pid"
+# socket_path = "~/.cache/ember/emberd.sock"
+

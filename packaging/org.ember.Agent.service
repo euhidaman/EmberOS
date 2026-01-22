@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.ember.Agent
+Exec=/usr/bin/emberd
+

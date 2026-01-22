@@ -1,0 +1,25 @@
+[Unit]
+Description=EmberOS Agent Daemon
+Documentation=https://docs.emberos.org
+After=dbus.service ember-llm.service
+Wants=ember-llm.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/emberd
+Restart=on-failure
+RestartSec=5
+
+# Environment
+Environment=EMBER_LOG_LEVEL=INFO
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/share/ember %h/.config/ember %h/.cache/ember
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target
+

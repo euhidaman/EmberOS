@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Name=EmberOS
+GenericName=AI Assistant
+Comment=AI-native layer for Arch Linux
+Exec=ember-ui
+Icon=emberos
+Terminal=false
+Categories=Utility;System;
+Keywords=ai;assistant;agent;llm;zevion;
+StartupWMClass=EmberOS
+Actions=terminal;
+
+[Desktop Action terminal]
+Name=Open Terminal
+Exec=ember
+

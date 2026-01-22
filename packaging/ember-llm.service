@@ -1,0 +1,31 @@
+[Unit]
+Description=EmberOS LLM Server (llama.cpp)
+Documentation=https://docs.emberos.org
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/llama-server \
+    --model /usr/local/share/ember/models/qwen2.5-vl-7b-instruct-q4_k_m.gguf \
+    --host 127.0.0.1 \
+    --port 8080 \
+    --ctx-size 8192 \
+    --threads 4 \
+    --n-gpu-layers 0
+
+Restart=on-failure
+RestartSec=10
+
+# Environment
+Environment=LLAMA_LOG_LEVEL=INFO
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadOnlyPaths=/usr/local/share/ember/models
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target
+

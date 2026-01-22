@@ -1,0 +1,112 @@
+# Maintainer: EmberOS Team <ember@emberos.org>
+pkgname=emberos
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="EmberOS - An AI-native layer for Arch Linux"
+arch=('x86_64')
+url="https://emberos.org"
+license=('GPL3')
+depends=(
+    'python>=3.11'
+    'python-pyqt6'
+    'python-dbus-next'
+    'python-aiohttp'
+    'python-pydantic'
+    'python-yaml'
+    'python-rich'
+    'python-prompt_toolkit'
+    'python-click'
+    'python-psutil'
+    'python-watchdog'
+    'python-xlib'
+    'python-aiosqlite'
+    'sqlite'
+    # Optional but recommended
+    'xclip'
+    'xdotool'
+    'wmctrl'
+    'libnotify'
+)
+optdepends=(
+    'llama.cpp: Local LLM inference server'
+    'python-chromadb: Vector database for semantic search'
+    'python-sentence-transformers: Embedding generation'
+)
+makedepends=(
+    'python-build'
+    'python-installer'
+    'python-wheel'
+    'python-setuptools'
+)
+backup=(
+    'etc/ember/emberos.toml'
+)
+source=(
+    "$pkgname-$pkgver.tar.gz"
+)
+sha256sums=('SKIP')
+
+build() {
+    cd "$pkgname-$pkgver"
+    python -m build --wheel --no-isolation
+}
+
+package() {
+    cd "$pkgname-$pkgver"
+
+    # Install Python package
+    python -m installer --destdir="$pkgdir" dist/*.whl
+
+    # Install systemd user services
+    install -Dm644 packaging/emberd.service \
+        "$pkgdir/usr/lib/systemd/user/emberd.service"
+    install -Dm644 packaging/ember-llm.service \
+        "$pkgdir/usr/lib/systemd/user/ember-llm.service"
+
+    # Install D-Bus service file
+    install -Dm644 packaging/org.ember.Agent.service \
+        "$pkgdir/usr/share/dbus-1/services/org.ember.Agent.service"
+
+    # Install desktop entry
+    install -Dm644 packaging/emberos.desktop \
+        "$pkgdir/usr/share/applications/emberos.desktop"
+
+    # Install icon
+    install -Dm644 assets/zevion-logo.png \
+        "$pkgdir/usr/share/icons/hicolor/256x256/apps/emberos.png"
+
+    # Install default configuration
+    install -Dm644 configs/emberos.toml \
+        "$pkgdir/etc/ember/emberos.toml"
+
+    # Create directories for user data
+    install -dm755 "$pkgdir/usr/local/share/ember/models"
+    install -dm755 "$pkgdir/usr/local/share/ember/tools"
+
+    # Install documentation
+    install -Dm644 README.rst "$pkgdir/usr/share/doc/$pkgname/README.rst"
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
+
+post_install() {
+    echo "==> EmberOS has been installed!"
+    echo ""
+    echo "To get started:"
+    echo "  1. Download an LLM model (e.g., Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf)"
+    echo "     Place it in /usr/local/share/ember/models/"
+    echo ""
+    echo "  2. Enable and start the services:"
+    echo "     systemctl --user enable --now ember-llm"
+    echo "     systemctl --user enable --now emberd"
+    echo ""
+    echo "  3. Launch EmberOS:"
+    echo "     - GUI: ember-ui (or from application menu)"
+    echo "     - CLI: ember"
+    echo ""
+    echo "For more information, see: https://docs.emberos.org"
+}
+
+post_upgrade() {
+    post_install
+}
+
