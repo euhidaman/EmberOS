@@ -55,8 +55,11 @@ class EmberApplication(QApplication):
         # Try to load custom fonts
         font_families = ["Inter", "SF Pro Display", "Segoe UI", "Roboto", "system-ui"]
 
+        # PyQt6 API: get list of available font families
+        available_families = QFontDatabase.families()
+
         for family in font_families:
-            if QFontDatabase.hasFamily(family):
+            if family in available_families:
                 font = QFont(family, self.config.gui.font_size)
                 self.setFont(font)
                 break
