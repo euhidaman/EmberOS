@@ -207,8 +207,15 @@ class TitleBar(QFrame):
                 event.ignore()
                 return
 
-            # Get the main window
+            # Try native window dragging first (works better on Linux)
             window = self.window()
+            if window.windowHandle():
+                # Use native system move (better for X11/Wayland)
+                window.windowHandle().startSystemMove()
+                event.accept()
+                return
+
+            # Fallback to manual dragging
             self._drag_pos = event.globalPosition().toPoint() - window.pos()
             self.setCursor(QCursor(Qt.CursorShape.ClosedHandCursor))
             event.accept()
@@ -216,7 +223,7 @@ class TitleBar(QFrame):
     def mouseMoveEvent(self, event) -> None:
         """Handle mouse move for window dragging."""
         if self._drag_pos is not None and event.buttons() == Qt.MouseButton.LeftButton:
-            # Move the main window
+            # Move the main window manually (fallback method)
             window = self.window()
             window.move(event.globalPosition().toPoint() - self._drag_pos)
             event.accept()

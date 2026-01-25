@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QPushButton,
-    QLabel, QFrame, QSizePolicy
+    QLabel, QFrame, QSizePolicy, QFileDialog
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QFont, QKeyEvent
@@ -54,6 +54,9 @@ class InputDeck(QFrame):
     message_submitted = pyqtSignal(str)
     cancel_clicked = pyqtSignal()
     execute_clicked = pyqtSignal()
+    file_attached = pyqtSignal(list)  # Emits list of file paths
+    interrupt_requested = pyqtSignal()  # Interrupt current task
+    rollback_requested = pyqtSignal()  # Rollback to previous state
 
     # Placeholder examples
     PLACEHOLDERS = [
@@ -69,6 +72,7 @@ class InputDeck(QFrame):
         super().__init__()
 
         self._placeholder_index = 0
+        self._attached_files = []  # Track attached files
         self._setup_ui()
         self._setup_placeholder_rotation()
 
@@ -86,21 +90,23 @@ class InputDeck(QFrame):
         layout.setContentsMargins(16, 12, 16, 12)
         layout.setSpacing(8)
 
-        # Top row: attachment buttons
+        # Top row: attachment button and file indicator
         top_row = QHBoxLayout()
         top_row.setSpacing(8)
 
-        self.attach_btn = QPushButton("📎")
-        self.attach_btn.setFixedSize(32, 32)
-        self.attach_btn.setToolTip("Attach files")
+        self.attach_btn = QPushButton("📎 Attach Files")
+        self.attach_btn.setFixedHeight(32)
+        self.attach_btn.setMinimumWidth(120)
+        self.attach_btn.setToolTip("Attach files for analysis (images, documents, etc.)")
         self.attach_btn.setObjectName("secondaryButton")
+        self.attach_btn.clicked.connect(self._on_attach_files)
         top_row.addWidget(self.attach_btn)
 
-        self.voice_btn = QPushButton("🎤")
-        self.voice_btn.setFixedSize(32, 32)
-        self.voice_btn.setToolTip("Voice input")
-        self.voice_btn.setObjectName("secondaryButton")
-        top_row.addWidget(self.voice_btn)
+        # Label showing attached files count
+        self.attached_label = QLabel("")
+        self.attached_label.setStyleSheet("color: #ff6b35; font-size: 10px;")
+        self.attached_label.setVisible(False)
+        top_row.addWidget(self.attached_label)
 
         top_row.addStretch()
         layout.addLayout(top_row)
@@ -115,6 +121,21 @@ class InputDeck(QFrame):
         bottom_row = QHBoxLayout()
         bottom_row.setSpacing(12)
 
+        # Left side: control buttons
+        self.interrupt_btn = QPushButton("⏸ Interrupt")
+        self.interrupt_btn.setObjectName("warningButton")
+        self.interrupt_btn.setToolTip("Stop the current task")
+        self.interrupt_btn.clicked.connect(self._on_interrupt)
+        self.interrupt_btn.setEnabled(False)  # Disabled until task is running
+        bottom_row.addWidget(self.interrupt_btn)
+
+        self.rollback_btn = QPushButton("↩ Rollback")
+        self.rollback_btn.setObjectName("warningButton")
+        self.rollback_btn.setToolTip("Undo the last operation")
+        self.rollback_btn.clicked.connect(self._on_rollback)
+        self.rollback_btn.setEnabled(False)  # Disabled until rollback is available
+        bottom_row.addWidget(self.rollback_btn)
+
         self.cancel_btn = QPushButton("Cancel")
         self.cancel_btn.setObjectName("secondaryButton")
         self.cancel_btn.clicked.connect(self._on_cancel)
@@ -122,6 +143,7 @@ class InputDeck(QFrame):
 
         bottom_row.addStretch()
 
+        # Right side: execution buttons
         self.execute_btn = QPushButton("Execute")
         self.execute_btn.setObjectName("secondaryButton")
         self.execute_btn.clicked.connect(self._on_execute)
@@ -166,6 +188,52 @@ class InputDeck(QFrame):
             self.message_submitted.emit(text)
             self.text_input.clear()
 
+            # Emit attached files if any
+            if self._attached_files:
+                self.file_attached.emit(self._attached_files)
+                self._clear_attachments()
+
+    def _on_attach_files(self) -> None:
+        """Handle attach files button click."""
+        file_dialog = QFileDialog(self)
+        file_dialog.setWindowTitle("Attach Files")
+        file_dialog.setFileMode(QFileDialog.FileMode.ExistingFiles)  # Allow multiple files
+
+        # Set file filters for common types
+        file_dialog.setNameFilter(
+            "All Files (*);;Images (*.png *.jpg *.jpeg *.gif *.bmp *.svg);;"
+            "Documents (*.pdf *.doc *.docx *.txt *.md *.odt);;"
+            "Spreadsheets (*.xls *.xlsx *.csv *.ods);;"
+            "Code (*.py *.js *.java *.cpp *.c *.h *.rs *.go);;"
+            "Archives (*.zip *.tar *.gz *.bz2 *.7z)"
+        )
+
+        if file_dialog.exec():
+            selected_files = file_dialog.selectedFiles()
+            if selected_files:
+                self._attached_files.extend(selected_files)
+                self._update_attachment_display()
+
+    def _update_attachment_display(self) -> None:
+        """Update the attachment count label."""
+        if self._attached_files:
+            count = len(self._attached_files)
+            self.attached_label.setText(f"{count} file{'s' if count > 1 else ''} attached")
+            self.attached_label.setVisible(True)
+            self.attach_btn.setText("📎 Add More")
+        else:
+            self.attached_label.setVisible(False)
+            self.attach_btn.setText("📎 Attach Files")
+
+    def _clear_attachments(self) -> None:
+        """Clear all attached files."""
+        self._attached_files.clear()
+        self._update_attachment_display()
+
+    def get_attached_files(self) -> list[str]:
+        """Get list of currently attached files."""
+        return self._attached_files.copy()
+
     def _on_cancel(self) -> None:
         """Handle cancel button click."""
         self.cancel_clicked.emit()
@@ -173,6 +241,24 @@ class InputDeck(QFrame):
     def _on_execute(self) -> None:
         """Handle execute button click."""
         self.execute_clicked.emit()
+
+    def _on_interrupt(self) -> None:
+        """Handle interrupt button click."""
+        self.interrupt_requested.emit()
+
+    def _on_rollback(self) -> None:
+        """Handle rollback button click."""
+        self.rollback_requested.emit()
+
+    def set_task_running(self, running: bool) -> None:
+        """Update UI based on task running state."""
+        self.interrupt_btn.setEnabled(running)
+        self.send_btn.setEnabled(not running)
+        self.execute_btn.setEnabled(not running)
+
+    def set_rollback_available(self, available: bool) -> None:
+        """Update rollback button availability."""
+        self.rollback_btn.setEnabled(available)
 
     def set_enabled(self, enabled: bool) -> None:
         """Enable or disable input."""

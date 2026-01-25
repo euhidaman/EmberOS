@@ -232,6 +232,25 @@ class EmberApplication(QApplication):
             background-color: rgba(80, 80, 100, 0.8);
         }}
         
+        QPushButton#warningButton {{
+            background-color: rgba(230, 126, 34, 0.8);
+            border: 1px solid rgba(230, 126, 34, 0.5);
+        }}
+        
+        QPushButton#warningButton:hover {{
+            background-color: rgba(230, 126, 34, 1.0);
+        }}
+        
+        QPushButton#warningButton:pressed {{
+            background-color: rgba(211, 84, 0, 1.0);
+        }}
+        
+        QPushButton#warningButton:disabled {{
+            background-color: rgba(100, 100, 100, 0.3);
+            border-color: rgba(100, 100, 100, 0.3);
+            color: rgba(240, 240, 250, 0.3);
+        }}
+        
         /* Labels */
         QLabel {{
             color: {text_color};

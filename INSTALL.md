@@ -620,6 +620,23 @@ sudo rm -rf /usr/local/share/ember
 
 ---
 
+## Next Steps
+
+✅ **Installation Complete!**
+
+Now that EmberOS is installed, learn how to use it effectively:
+
+📖 **[Read the User Guide →](USER_GUIDE.md)**
+
+The User Guide covers:
+- Complete UI overview with screenshots
+- Step-by-step workflow examples
+- All available commands and features
+- Tips & best practices
+- Troubleshooting common issues
+
+---
+
 ## Support
 
 - **Documentation:** https://docs.emberos.org
