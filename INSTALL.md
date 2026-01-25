@@ -88,6 +88,34 @@ deactivate
 
 ---
 
+## Step 6.5: Install ChromaDB (If Using Python 3.12)
+
+If your virtual environment is using Python 3.12, you can install ChromaDB for full vector search support:
+
+### Manual Install:
+
+```bash
+source ~/.local/share/ember/venv/bin/activate
+pip install chromadb sentence-transformers
+deactivate
+
+# Restart daemon
+systemctl --user restart emberd
+
+# Verify ChromaDB is loaded
+journalctl --user -u emberd -n 20 --no-pager | grep -i chroma
+```
+
+ChromaDB enables:
+- ✅ Semantic search over notes
+- ✅ Conversation history search
+- ✅ File content search
+- ✅ Context-aware memory retrieval
+
+---
+
+---
+
 ## Step 3: Install llama.cpp (Required for LLM Inference)
 
 EmberOS uses llama.cpp to run the LLM locally. Choose one of these options:
