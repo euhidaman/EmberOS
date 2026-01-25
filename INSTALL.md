@@ -32,6 +32,8 @@ cd emberos
 sudo pacman -S --needed python python-pip python-virtualenv python-pyqt6 sqlite xclip xdotool wmctrl libnotify dbus
 ```
 
+> **Note:** Modern Arch Linux uses PEP 668 which prevents direct pip installs. The installer now uses a virtual environment automatically.
+
 ---
 
 ## Step 3: Install llama.cpp (Required for LLM Inference)
@@ -148,11 +150,63 @@ This script will:
 
 If the install script doesn't work, you can install manually:
 
-### Install Python Package
+### Create Virtual Environment and Install Python Package
 
 ```bash
 cd ~/emberos
-pip install --user -e .
+
+# Create virtual environment
+python -m venv ~/.local/share/ember/venv
+
+# Activate it
+source ~/.local/share/ember/venv/bin/activate
+
+# Install EmberOS
+pip install -e .
+
+# Deactivate when done
+deactivate
+```
+
+### Create CLI Wrapper Scripts
+
+```bash
+mkdir -p ~/.local/bin
+
+# Create ember wrapper
+cat > ~/.local/bin/ember << 'EOF'
+#!/bin/bash
+exec "$HOME/.local/share/ember/venv/bin/ember" "$@"
+EOF
+chmod +x ~/.local/bin/ember
+
+# Create ember-ui wrapper
+cat > ~/.local/bin/ember-ui << 'EOF'
+#!/bin/bash
+exec "$HOME/.local/share/ember/venv/bin/ember-ui" "$@"
+EOF
+chmod +x ~/.local/bin/ember-ui
+
+# Create emberd wrapper
+cat > ~/.local/bin/emberd << 'EOF'
+#!/bin/bash
+exec "$HOME/.local/share/ember/venv/bin/emberd" "$@"
+EOF
+chmod +x ~/.local/bin/emberd
+```
+
+### Add ~/.local/bin to PATH (if not already)
+
+Add this to your `~/.bashrc` or `~/.zshrc`:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Then reload:
+
+```bash
+source ~/.bashrc  # or source ~/.zshrc
 ```
 
 ### Copy Configuration
@@ -390,16 +444,20 @@ To remove EmberOS:
 systemctl --user disable --now emberd
 systemctl --user disable --now ember-llm
 
-# Remove files
+# Remove CLI wrapper scripts
+rm -f ~/.local/bin/ember ~/.local/bin/ember-ui ~/.local/bin/emberd
+
+# Remove files (includes virtual environment)
 rm -rf ~/.local/share/ember
 rm -rf ~/.config/ember
 rm -rf ~/.cache/ember
-rm ~/.config/systemd/user/ember*.service
-rm ~/.local/share/dbus-1/services/org.ember.Agent.service
-rm ~/.local/share/applications/emberos.desktop
+rm -f ~/.config/systemd/user/ember*.service
+rm -f ~/.local/share/dbus-1/services/org.ember.Agent.service
+rm -f ~/.local/share/applications/emberos.desktop
+rm -f ~/.local/share/icons/hicolor/256x256/apps/emberos.png
 
-# Uninstall Python package
-pip uninstall emberos
+# Reload systemd
+systemctl --user daemon-reload
 
 # Optionally remove models
 sudo rm -rf /usr/local/share/ember

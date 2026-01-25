@@ -90,20 +90,70 @@ echo -e "${GREEN}✓ Directories created${NC}"
 
 echo -e "${BLUE}Step 3: Installing EmberOS Python package...${NC}"
 
-# Install the package
+# Install the package using virtual environment (PEP 668 compliant)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV_DIR="$EMBER_DIR/venv"
+
+# Create virtual environment if it doesn't exist
+if [ ! -d "$VENV_DIR" ]; then
+    echo "Creating virtual environment..."
+    python -m venv "$VENV_DIR"
+fi
+
+# Activate virtual environment and install
+source "$VENV_DIR/bin/activate"
+
+# Upgrade pip in venv
+pip install --upgrade pip
 
 if [ -f "$SCRIPT_DIR/pyproject.toml" ]; then
     # Development install from source
-    pip install --user -e "$SCRIPT_DIR"
+    pip install -e "$SCRIPT_DIR"
 else
     # Install from PyPI (when available)
-    pip install --user emberos
+    pip install emberos
 fi
 
-echo -e "${GREEN}✓ EmberOS package installed${NC}"
+deactivate
 
-echo -e "${BLUE}Step 4: Installing configuration...${NC}"
+echo -e "${GREEN}✓ EmberOS package installed (in virtual environment)${NC}"
+
+echo -e "${BLUE}Step 4: Creating CLI wrapper scripts...${NC}"
+
+# Create wrapper scripts in ~/.local/bin for easy CLI access
+mkdir -p "$HOME/.local/bin"
+
+# Create ember wrapper
+cat > "$HOME/.local/bin/ember" << 'WRAPPER'
+#!/bin/bash
+exec "$HOME/.local/share/ember/venv/bin/ember" "$@"
+WRAPPER
+chmod +x "$HOME/.local/bin/ember"
+
+# Create ember-ui wrapper
+cat > "$HOME/.local/bin/ember-ui" << 'WRAPPER'
+#!/bin/bash
+exec "$HOME/.local/share/ember/venv/bin/ember-ui" "$@"
+WRAPPER
+chmod +x "$HOME/.local/bin/ember-ui"
+
+# Create emberd wrapper
+cat > "$HOME/.local/bin/emberd" << 'WRAPPER'
+#!/bin/bash
+exec "$HOME/.local/share/ember/venv/bin/emberd" "$@"
+WRAPPER
+chmod +x "$HOME/.local/bin/emberd"
+
+echo -e "${GREEN}✓ CLI wrapper scripts created${NC}"
+
+# Check if ~/.local/bin is in PATH
+if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+    echo -e "${YELLOW}⚠ ~/.local/bin is not in your PATH${NC}"
+    echo "Add this to your ~/.bashrc or ~/.zshrc:"
+    echo '  export PATH="$HOME/.local/bin:$PATH"'
+fi
+
+echo -e "${BLUE}Step 5: Installing configuration...${NC}"
 
 # Copy default config if not exists
 if [ ! -f "$CONFIG_DIR/emberos.toml" ]; then
@@ -114,7 +164,7 @@ fi
 
 echo -e "${GREEN}✓ Configuration installed${NC}"
 
-echo -e "${BLUE}Step 5: Installing systemd services...${NC}"
+echo -e "${BLUE}Step 6: Installing systemd services...${NC}"
 
 # Create user systemd directory
 mkdir -p "$HOME/.config/systemd/user"
@@ -130,7 +180,7 @@ systemctl --user daemon-reload
 
 echo -e "${GREEN}✓ Systemd services installed${NC}"
 
-echo -e "${BLUE}Step 6: Installing D-Bus service...${NC}"
+echo -e "${BLUE}Step 7: Installing D-Bus service...${NC}"
 
 # Copy D-Bus service file
 mkdir -p "$HOME/.local/share/dbus-1/services"
@@ -140,7 +190,7 @@ fi
 
 echo -e "${GREEN}✓ D-Bus service installed${NC}"
 
-echo -e "${BLUE}Step 6.5: Installing desktop entry and icon...${NC}"
+echo -e "${BLUE}Step 8: Installing desktop entry and icon...${NC}"
 
 # Install desktop entry
 mkdir -p "$HOME/.local/share/applications"
@@ -167,7 +217,7 @@ echo -e "${GREEN}✓ Desktop entry and icon installed${NC}"
 
 # Check for LLM model
 echo ""
-echo -e "${BLUE}Step 7: Checking for LLM model...${NC}"
+echo -e "${BLUE}Step 9: Checking for LLM model...${NC}"
 
 if [ -z "$(ls -A $MODEL_DIR 2>/dev/null)" ]; then
     echo -e "${YELLOW}⚠ No LLM model found in $MODEL_DIR${NC}"
@@ -176,25 +226,20 @@ if [ -z "$(ls -A $MODEL_DIR 2>/dev/null)" ]; then
     echo "Recommended: Qwen2.5-VL-7B-Instruct (Q4_K_M quantization)"
     echo ""
     echo "Download options:"
-    echo "  1. HuggingFace: https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct-GGUF"
-    echo "  2. Direct: wget <model-url> -O $MODEL_DIR/qwen2.5-vl-7b-instruct-q4_k_m.gguf"
+    echo "  1. Unsloth (recommended): https://huggingface.co/unsloth/Qwen2.5-VL-7B-Instruct-GGUF"
+    echo "  2. PatataAliena: https://huggingface.co/PatataAliena/Qwen2.5-VL-7B-Instruct-Q4_K_M-GGUF"
     echo ""
-    read -p "Would you like to download a recommended model now? [y/N] " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo "Downloading model (this may take a while)..."
-        # Note: Replace with actual model URL
-        # wget -c "https://huggingface.co/..." -O "$MODEL_DIR/qwen2.5-vl-7b-instruct-q4_k_m.gguf"
-        echo -e "${YELLOW}Model download not implemented in installer.${NC}"
-        echo "Please download manually."
-    fi
+    echo "Quick download command:"
+    echo "  pip install huggingface-hub"
+    echo "  huggingface-cli download unsloth/Qwen2.5-VL-7B-Instruct-GGUF Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf --local-dir $MODEL_DIR"
+    echo ""
 else
     echo -e "${GREEN}✓ LLM model found${NC}"
 fi
 
 # Check for llama.cpp
 echo ""
-echo -e "${BLUE}Step 8: Checking for llama.cpp...${NC}"
+echo -e "${BLUE}Step 10: Checking for llama.cpp...${NC}"
 
 if ! command -v llama-server &> /dev/null; then
     echo -e "${YELLOW}⚠ llama.cpp not found${NC}"

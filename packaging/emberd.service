@@ -6,7 +6,7 @@ Wants=ember-llm.service
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/emberd
+ExecStart=%h/.local/share/ember/venv/bin/emberd
 Restart=on-failure
 RestartSec=5
 
