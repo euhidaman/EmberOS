@@ -5,6 +5,7 @@ EmberOS Main Window.
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Optional
 from datetime import datetime
 
@@ -18,11 +19,14 @@ from PyQt6.QtGui import QIcon, QColor, QFont, QAction, QCloseEvent
 
 from emberos.core.config import EmberConfig, GUIConfig
 from emberos.core.constants import EMBER_ORANGE, APP_NAME
+from emberos.cli.client import EmberClient
 from emberos.gui.widgets.chat import ChatWidget
 from emberos.gui.widgets.input_deck import InputDeck
 from emberos.gui.widgets.context_ribbon import ContextRibbon
 from emberos.gui.widgets.status_ticker import StatusTicker
 from emberos.gui.widgets.title_bar import TitleBar
+
+logger = logging.getLogger(__name__)
 
 
 class EmberMainWindow(QMainWindow):
@@ -45,7 +49,8 @@ class EmberMainWindow(QMainWindow):
 
         self.config = config
         self.gui_config = config.gui
-        self._client = None
+        self._client = EmberClient()
+        self._connected = False
 
         # Window setup
         self._setup_window()
@@ -55,6 +60,9 @@ class EmberMainWindow(QMainWindow):
 
         # Start background tasks
         self._start_background_tasks()
+
+        # Connect to daemon
+        self._connect_to_daemon()
 
     def _setup_window(self) -> None:
         """Setup window properties."""
@@ -175,6 +183,8 @@ class EmberMainWindow(QMainWindow):
         # Input deck
         self.input_deck.message_submitted.connect(self._on_message_submitted)
         self.input_deck.cancel_clicked.connect(self._on_cancel_clicked)
+        self.input_deck.interrupt_requested.connect(self._on_interrupt_requested)
+        self.input_deck.rollback_requested.connect(self._on_rollback_requested)
 
         # Initialize theme button state
         app = QApplication.instance()
@@ -242,27 +252,195 @@ class EmberMainWindow(QMainWindow):
     async def _process_command(self, message: str) -> None:
         """Process a command through the daemon."""
         try:
-            # TODO: Connect to daemon client
-            # For now, simulate response
-            await asyncio.sleep(1)
+            if not self._connected:
+                self.chat_widget.hide_typing_indicator()
+                self.chat_widget.add_agent_message(
+                    "⚠️ Not connected to EmberOS daemon.\n\n"
+                    "Please ensure the daemon is running:\n"
+                    "  systemctl --user status emberd\n\n"
+                    "Try restarting it:\n"
+                    "  systemctl --user restart emberd",
+                    is_error=True
+                )
+                return
+
+            # Set task as running
+            self.input_deck.set_task_running(True)
+
+            # Send command to daemon
+            result = await self._client.process_command(message)
+
+            # Store task ID
+            self._current_task_id = result.get("task_id")
 
             self.chat_widget.hide_typing_indicator()
-            self.chat_widget.add_agent_message(
-                f"I received your message: \"{message}\"\n\n"
-                "The daemon connection is not yet implemented in the GUI."
-            )
 
-        except Exception as e:
+            # Check if confirmation is required
+            if result.get("status") == "awaiting_confirmation":
+                confirmation_msg = result.get("plan", {}).get("confirmation_message", "Proceed with this action?")
+                risk_level = result.get("plan", {}).get("risk_level", "medium")
+
+                self.chat_widget.add_agent_message(
+                    f"⚠️ **Confirmation Required** (Risk: {risk_level})\n\n"
+                    f"{confirmation_msg}\n\n"
+                    "This action requires your confirmation. "
+                    "Please review the plan and confirm if you want to proceed."
+                )
+                self.input_deck.set_task_running(False)
+                # TODO: Add confirmation UI buttons
+                return
+
+            # Display response
+            response = result.get("response", "Task completed.")
+            self.chat_widget.add_agent_message(response)
+
+            # Update input deck state based on task status
+            self.input_deck.set_task_running(False)
+            if result.get("snapshots"):
+                self.input_deck.set_rollback_available(True)
+
+        except ConnectionError as e:
             self.chat_widget.hide_typing_indicator()
+            self.input_deck.set_task_running(False)
             self.chat_widget.add_agent_message(
-                f"Error processing command: {e}",
+                f"❌ Connection Error: {e}\n\n"
+                "The daemon may not be running. Check with:\n"
+                "  systemctl --user status emberd",
                 is_error=True
             )
+        except Exception as e:
+            self.chat_widget.hide_typing_indicator()
+            self.input_deck.set_task_running(False)
+            self.chat_widget.add_agent_message(
+                f"❌ Error processing command: {e}",
+                is_error=True
+            )
+
+    def _connect_to_daemon(self) -> None:
+        """Connect to the daemon asynchronously."""
+        QTimer.singleShot(100, lambda: self._schedule_connection())
+
+    def _schedule_connection(self) -> None:
+        """Schedule daemon connection."""
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        task = loop.create_task(self._connect_daemon_async())
+        if not hasattr(self, '_pending_tasks'):
+            self._pending_tasks = set()
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._pending_tasks.discard)
+
+    async def _connect_daemon_async(self) -> None:
+        """Async daemon connection."""
+        try:
+            self._connected = await self._client.connect()
+
+            if self._connected:
+                self.status_ticker.update_connection_status(True)
+                # Setup callbacks for daemon events
+                self._client.on("progress", self._on_task_progress)
+                self._client.on("completed", self._on_task_completed)
+                self._client.on("failed", self._on_task_failed)
+            else:
+                self.status_ticker.update_connection_status(False)
+
+        except Exception as e:
+            self._connected = False
+            self.status_ticker.update_connection_status(False)
+            logger.error(f"Failed to connect to daemon: {e}")
+
+    def _on_task_progress(self, update) -> None:
+        """Handle task progress updates."""
+        message = update.data.get("message", "Processing...")
+        self.chat_widget.add_system_message(f"⚙️ {message}")
+
+    def _on_task_completed(self, update) -> None:
+        """Handle task completion."""
+        self.input_deck.set_task_running(False)
+        response = update.data.get("response", "Task completed.")
+        self.chat_widget.hide_typing_indicator()
+        self.chat_widget.add_agent_message(response)
+
+    def _on_task_failed(self, update) -> None:
+        """Handle task failure."""
+        self.input_deck.set_task_running(False)
+        error = update.data.get("error", "Unknown error")
+        self.chat_widget.hide_typing_indicator()
+        self.chat_widget.add_agent_message(f"❌ Task failed: {error}", is_error=True)
 
     def _on_cancel_clicked(self) -> None:
         """Handle cancel button click."""
         # TODO: Cancel current task
         pass
+
+    def _on_interrupt_requested(self) -> None:
+        """Handle interrupt button click."""
+        if self._connected and hasattr(self, '_current_task_id'):
+            QTimer.singleShot(0, lambda: self._schedule_interrupt())
+        else:
+            self.chat_widget.add_system_message("⚠️ No active task to interrupt")
+
+    def _schedule_interrupt(self) -> None:
+        """Schedule task interruption."""
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        task = loop.create_task(self._interrupt_task_async())
+        if not hasattr(self, '_pending_tasks'):
+            self._pending_tasks = set()
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._pending_tasks.discard)
+
+    async def _interrupt_task_async(self) -> None:
+        """Async task interruption."""
+        try:
+            if hasattr(self, '_current_task_id'):
+                await self._client.cancel_task(self._current_task_id)
+                self.chat_widget.add_system_message("⏸ Task interrupted")
+                self.input_deck.set_task_running(False)
+        except Exception as e:
+            self.chat_widget.add_agent_message(f"❌ Failed to interrupt task: {e}", is_error=True)
+
+    def _on_rollback_requested(self) -> None:
+        """Handle rollback button click."""
+        if self._connected and hasattr(self, '_current_task_id'):
+            QTimer.singleShot(0, lambda: self._schedule_rollback())
+        else:
+            self.chat_widget.add_system_message("⚠️ No snapshots available for rollback")
+
+    def _schedule_rollback(self) -> None:
+        """Schedule rollback operation."""
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        task = loop.create_task(self._rollback_task_async())
+        if not hasattr(self, '_pending_tasks'):
+            self._pending_tasks = set()
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._pending_tasks.discard)
+
+    async def _rollback_task_async(self) -> None:
+        """Async rollback operation."""
+        try:
+            # TODO: Implement rollback via daemon API once available
+            # For now, show a message
+            self.chat_widget.add_system_message(
+                "↩ Rollback requested\n"
+                "Note: Rollback API integration pending in daemon"
+            )
+            self.input_deck.set_rollback_available(False)
+        except Exception as e:
+            self.chat_widget.add_agent_message(f"❌ Failed to rollback: {e}", is_error=True)
 
     def _on_theme_toggle(self) -> None:
         """Handle theme toggle button click."""

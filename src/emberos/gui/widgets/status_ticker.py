@@ -149,3 +149,6 @@ class StatusTicker(QFrame):
         self.status_indicator.set_reconnecting()
         self.connection_label.setText("Reconnecting...")
 
+    def update_connection_status(self, connected: bool) -> None:
+        """Update just the connection status."""
+        self.update_status(connected=connected)
