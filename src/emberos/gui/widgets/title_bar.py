@@ -112,6 +112,7 @@ class TitleBar(QFrame):
     minimize_clicked = pyqtSignal()
     maximize_clicked = pyqtSignal()
     close_clicked = pyqtSignal()
+    theme_toggle_clicked = pyqtSignal()  # New signal for theme toggle
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -157,6 +158,12 @@ class TitleBar(QFrame):
 
         layout.addStretch()
 
+        # Theme toggle button
+        self.theme_btn = WindowButton("☀", hover_color="#404050")  # Sun icon for light mode toggle
+        self.theme_btn.setToolTip("Toggle Light/Dark Mode")
+        self.theme_btn.clicked.connect(self.theme_toggle_clicked.emit)
+        layout.addWidget(self.theme_btn)
+
         # Window controls
         self.minimize_btn = WindowButton("−")
         self.minimize_btn.clicked.connect(self.minimize_clicked.emit)
@@ -174,3 +181,11 @@ class TitleBar(QFrame):
         """Set the title text."""
         self.title_label.setText(title)
 
+    def update_theme_button(self, theme: str) -> None:
+        """Update theme button icon based on current theme."""
+        if theme == "dark":
+            self.theme_btn.setText("☀")  # Sun icon for light mode toggle
+            self.theme_btn.setToolTip("Switch to Light Mode")
+        else:
+            self.theme_btn.setText("☾")  # Moon icon for dark mode toggle
+            self.theme_btn.setToolTip("Switch to Dark Mode")

@@ -165,6 +165,7 @@ class EmberMainWindow(QMainWindow):
         self.title_bar.minimize_clicked.connect(self.showMinimized)
         self.title_bar.maximize_clicked.connect(self._toggle_maximize)
         self.title_bar.close_clicked.connect(self.close)
+        self.title_bar.theme_toggle_clicked.connect(self._on_theme_toggle)
 
         # Input deck
         self.input_deck.message_submitted.connect(self._on_message_submitted)
@@ -233,6 +234,34 @@ class EmberMainWindow(QMainWindow):
         """Handle cancel button click."""
         # TODO: Cancel current task
         pass
+
+    def _on_theme_toggle(self) -> None:
+        """Handle theme toggle button click."""
+        from PyQt6.QtWidgets import QApplication
+        app = QApplication.instance()
+        if hasattr(app, 'toggle_theme'):
+            app.toggle_theme()
+
+    def on_theme_changed(self, theme: str) -> None:
+        """Called when application theme changes."""
+        # Update title bar theme button
+        self.title_bar.update_theme_button(theme)
+
+        # Update container stylesheet
+        if theme == "dark":
+            container_bg = "rgba(26, 26, 36, 0.95)"
+            border_color = "rgba(255, 107, 53, 0.2)"
+        else:
+            container_bg = "rgba(245, 245, 250, 0.95)"
+            border_color = "rgba(255, 107, 53, 0.3)"
+
+        self.container.setStyleSheet(f"""
+            QFrame#mainContainer {{
+                background-color: {container_bg};
+                border: 1px solid {border_color};
+                border-radius: 12px;
+            }}
+        """)
 
     def _update_status(self) -> None:
         """Update status ticker."""
