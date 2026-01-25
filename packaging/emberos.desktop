@@ -3,7 +3,7 @@ Type=Application
 Name=EmberOS
 GenericName=AI Assistant
 Comment=AI-native layer for Arch Linux
-Exec=ember-ui
+Exec=bash -c "$HOME/.local/bin/ember-ui"
 Icon=emberos
 Terminal=false
 Categories=Utility;System;
@@ -13,5 +13,6 @@ Actions=terminal;
 
 [Desktop Action terminal]
 Name=Open Terminal
-Exec=ember
+Exec=bash -c "$HOME/.local/bin/ember"
+Terminal=true
 
