@@ -36,6 +36,53 @@ sudo pacman -S --needed python python-pip python-virtualenv python-pyqt6 sqlite 
 
 ---
 
+## Step 2.5: Python Version Compatibility (Important!)
+
+EmberOS works best with **Python 3.11 or 3.12**. If you're running **Python 3.14** (cutting-edge Arch), some dependencies like `onnxruntime` (used by ChromaDB for vector search) may not be available yet.
+
+### Check your Python version:
+
+```bash
+python --version
+```
+
+### If you have Python 3.14:
+
+**Option A: Use Python 3.12 for the virtual environment (Recommended)**
+
+```bash
+# Install Python 3.12
+sudo pacman -S python312
+
+# The install script will use system Python, so create venv manually with Python 3.12:
+python3.12 -m venv ~/.local/share/ember/venv
+source ~/.local/share/ember/venv/bin/activate
+pip install -e ~/emberos
+deactivate
+```
+
+**Option B: Continue with Python 3.14 (Limited Features)**
+
+EmberOS will work without vector search (ChromaDB). The core functionality (LLM chat, file operations, notes, system commands) will all work. Only semantic search over your notes/history will be disabled.
+
+```bash
+# Install without vector database extras
+cd ~/emberos
+source ~/.local/share/ember/venv/bin/activate
+pip install -e .
+deactivate
+```
+
+To add vector search later when onnxruntime supports Python 3.14:
+
+```bash
+source ~/.local/share/ember/venv/bin/activate
+pip install chromadb sentence-transformers
+deactivate
+```
+
+---
+
 ## Step 3: Install llama.cpp (Required for LLM Inference)
 
 EmberOS uses llama.cpp to run the LLM locally. Choose one of these options:

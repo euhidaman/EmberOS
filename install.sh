@@ -69,7 +69,30 @@ sudo pacman -S --needed --noconfirm \
 
 echo -e "${GREEN}✓ System dependencies installed${NC}"
 
-echo -e "${BLUE}Step 2: Creating directories...${NC}"
+# Check Python version
+PYTHON_VERSION=$(python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+PYTHON_MAJOR=$(python -c "import sys; print(sys.version_info.major)")
+PYTHON_MINOR=$(python -c "import sys; print(sys.version_info.minor)")
+
+echo -e "${BLUE}Detected Python version: ${PYTHON_VERSION}${NC}"
+
+# Determine which Python to use for venv
+PYTHON_CMD="python"
+
+if [ "$PYTHON_MINOR" -ge 14 ]; then
+    echo -e "${YELLOW}⚠ Python 3.14+ detected. Some dependencies (onnxruntime/chromadb) may not be available.${NC}"
+
+    # Check if Python 3.12 is available
+    if command -v python3.12 &> /dev/null; then
+        echo -e "${GREEN}Python 3.12 found! Using it for better compatibility.${NC}"
+        PYTHON_CMD="python3.12"
+    else
+        echo -e "${YELLOW}Python 3.12 not found. EmberOS will work but without vector search.${NC}"
+        echo "To enable vector search later, install python312 and recreate the venv:"
+        echo "  sudo pacman -S python312"
+        echo ""
+    fi
+fiecho -e "${BLUE}Step 2: Creating directories...${NC}"
 
 # Create directories
 mkdir -p "$EMBER_DIR"
@@ -96,8 +119,8 @@ VENV_DIR="$EMBER_DIR/venv"
 
 # Create virtual environment if it doesn't exist
 if [ ! -d "$VENV_DIR" ]; then
-    echo "Creating virtual environment..."
-    python -m venv "$VENV_DIR"
+    echo "Creating virtual environment with $PYTHON_CMD..."
+    $PYTHON_CMD -m venv "$VENV_DIR"
 fi
 
 # Activate virtual environment and install

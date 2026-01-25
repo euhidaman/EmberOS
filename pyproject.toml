@@ -43,10 +43,6 @@ dependencies = [
     "prompt-toolkit>=3.0.43",
     "click>=8.1.7",
 
-    # Memory & Embeddings
-    "chromadb>=0.4.22",
-    "sentence-transformers>=2.2.2",
-
     # Database
     "aiosqlite>=0.19.0",
 
@@ -58,9 +54,17 @@ dependencies = [
     # Utilities
     "appdirs>=1.4.4",
     "python-dateutil>=2.8.2",
+
+    # Vector store (lightweight alternative)
+    "numpy>=1.26.0",
 ]
 
 [project.optional-dependencies]
+# Full vector search support (requires Python 3.11 or 3.12, not 3.14 yet)
+vectordb = [
+    "chromadb>=0.4.22",
+    "sentence-transformers>=2.2.2",
+]
 dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.23.0",
