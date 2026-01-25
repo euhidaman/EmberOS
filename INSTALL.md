@@ -76,27 +76,53 @@ sudo chown $USER:$USER /usr/local/share/ember/models
 
 > ⚠️ **IMPORTANT:** EmberOS does NOT automatically download the model. You must do this manually.
 
-The recommended model is **Qwen2.5-VL-7B-Instruct** with Q4_K_M quantization (~4.5GB).
+The recommended model is **Qwen2.5-VL-7B-Instruct** with Q4_K_M quantization (~4-5GB).
 
-### Option A: Using Hugging Face CLI
+### Option A: Unsloth GGUF (Recommended)
+
+Unsloth provides optimized, high-quality GGUF conversions.
 
 ```bash
 # Install huggingface-cli if not already installed
 pip install --user huggingface-hub
 
-# Download the model
-huggingface-cli download Qwen/Qwen2.5-VL-7B-Instruct-GGUF qwen2.5-vl-7b-instruct-q4_k_m.gguf --local-dir /usr/local/share/ember/models
+# Download from Unsloth (recommended)
+huggingface-cli download unsloth/Qwen2.5-VL-7B-Instruct-GGUF Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf --local-dir /usr/local/share/ember/models
 ```
 
-### Option B: Manual Download from Hugging Face
+**Direct link:** https://huggingface.co/unsloth/Qwen2.5-VL-7B-Instruct-GGUF
 
-1. Visit: https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct-GGUF/tree/main
-2. Download the `qwen2.5-vl-7b-instruct-q4_k_m.gguf` file
-3. Move it to `/usr/local/share/ember/models/`
+### Option B: PatataAliena Q4_K_M GGUF
+
+Alternative community conversion with Q4_K_M quantization.
 
 ```bash
-mv ~/Downloads/qwen2.5-vl-7b-instruct-q4_k_m.gguf /usr/local/share/ember/models/
+# Download from PatataAliena
+huggingface-cli download PatataAliena/Qwen2.5-VL-7B-Instruct-Q4_K_M-GGUF qwen2.5-vl-7b-instruct-q4_k_m.gguf --local-dir /usr/local/share/ember/models
 ```
+
+**Direct link:** https://huggingface.co/PatataAliena/Qwen2.5-VL-7B-Instruct-Q4_K_M-GGUF
+
+### Option C: Manual Download
+
+1. Visit one of the links above
+2. Download the `.gguf` file (Q4_K_M recommended, ~4-5GB)
+3. Move it to the models directory:
+
+```bash
+mv ~/Downloads/*.gguf /usr/local/share/ember/models/
+```
+
+### Available Quantizations (Unsloth)
+
+| Quantization | Size | Quality | Speed | Recommended For |
+|--------------|------|---------|-------|-----------------|
+| Q2_K | ~2.5GB | Lower | Fastest | Low RAM systems |
+| Q4_K_M | ~4.5GB | Good | Fast | **Most users** |
+| Q5_K_M | ~5.5GB | Better | Medium | Better quality |
+| Q8_0 | ~8GB | Best | Slower | High RAM systems |
+
+> 💡 **Tip:** Q4_K_M offers the best balance between quality and performance for most systems.
 
 ---
 
@@ -166,22 +192,37 @@ gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor
 
 ## Step 8: Configure Model Path (If Different)
 
-If your model file has a different name, edit the service file:
+The model filename varies depending on where you downloaded it from:
+
+| Source | Filename |
+|--------|----------|
+| Unsloth | `Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf` |
+| PatataAliena | `qwen2.5-vl-7b-instruct-q4_k_m.gguf` |
+
+Check what model file you have:
 
 ```bash
-# Check what model file you have
 ls /usr/local/share/ember/models/
+```
 
-# Edit the service file to match your model filename
+Edit the service file to match your model filename:
+
+```bash
 nano ~/.config/systemd/user/ember-llm.service
 ```
 
-Change this line to match your model:
+Change the `--model` line to match your file:
+
 ```ini
---model /usr/local/share/ember/models/YOUR_MODEL_NAME.gguf
+# For Unsloth download:
+--model /usr/local/share/ember/models/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf
+
+# OR for PatataAliena download:
+--model /usr/local/share/ember/models/qwen2.5-vl-7b-instruct-q4_k_m.gguf
 ```
 
 After editing, reload systemd:
+
 ```bash
 systemctl --user daemon-reload
 ```
