@@ -217,8 +217,27 @@ class EmberMainWindow(QMainWindow):
         # Show typing indicator
         self.chat_widget.show_typing_indicator()
 
-        # Process command (async)
-        asyncio.create_task(self._process_command(message))
+        # Process command asynchronously using QTimer
+        # This avoids the "no running event loop" error
+        QTimer.singleShot(0, lambda: self._schedule_command(message))
+
+    def _schedule_command(self, message: str) -> None:
+        """Schedule command processing."""
+        # Get the event loop from the application
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        # Create task
+        task = loop.create_task(self._process_command(message))
+
+        # Store task reference to prevent garbage collection
+        if not hasattr(self, '_pending_tasks'):
+            self._pending_tasks = set()
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._pending_tasks.discard)
 
     async def _process_command(self, message: str) -> None:
         """Process a command through the daemon."""

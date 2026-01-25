@@ -355,7 +355,15 @@ class EmberApplication(QApplication):
 
     def _setup_async_loop(self) -> None:
         """Setup asyncio integration with Qt event loop."""
-        # Create a timer to periodically run the asyncio event loop
+        # Create or get the event loop
+        try:
+            self._event_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop, create a new one
+            self._event_loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self._event_loop)
+
+        # Create a timer to periodically run pending asyncio tasks
         self._async_timer = QTimer()
         self._async_timer.timeout.connect(self._process_async_events)
         self._async_timer.start(10)  # 10ms interval
@@ -363,8 +371,9 @@ class EmberApplication(QApplication):
     def _process_async_events(self) -> None:
         """Process pending asyncio events."""
         try:
-            loop = asyncio.get_event_loop()
-            loop.run_until_complete(asyncio.sleep(0))
+            # Process any pending callbacks without blocking
+            self._event_loop.call_soon(self._event_loop.stop)
+            self._event_loop.run_forever()
         except Exception:
             pass
 
