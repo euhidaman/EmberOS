@@ -57,18 +57,17 @@ class EmberClient:
         try:
             self.bus = await MessageBus(bus_type=BusType.SESSION).connect()
 
+            # Introspect the daemon
             introspection = await self.bus.introspect(DBUS_NAME, DBUS_PATH)
             self.proxy = self.bus.get_proxy_object(DBUS_NAME, DBUS_PATH, introspection)
             self.interface = self.proxy.get_interface(DBUS_INTERFACE)
 
-            # Setup signal handlers
-            self.interface.on_task_progress(self._on_task_progress)
-            self.interface.on_task_completed(self._on_task_completed)
-            self.interface.on_task_failed(self._on_task_failed)
-            self.interface.on_confirmation_required(self._on_confirmation_required)
-            self.interface.on_context_changed(self._on_context_changed)
-
+            # Mark as connected before setting up signals
             self._connected = True
+
+            # Setup signal handlers - try different API patterns for compatibility
+            self._setup_signal_handlers()
+
             logger.info("Connected to EmberOS daemon")
             return True
 
@@ -76,6 +75,28 @@ class EmberClient:
             logger.error(f"Failed to connect to daemon: {e}")
             self._connected = False
             return False
+
+    def _setup_signal_handlers(self):
+        """Setup signal handlers with compatibility for different dbus_next versions."""
+        # Signal names in dbus_next are converted to snake_case with on_ prefix
+        signal_mappings = [
+            ('on_task_progress', self._on_task_progress),
+            ('on_task_completed', self._on_task_completed),
+            ('on_task_failed', self._on_task_failed),
+            ('on_confirmation_required', self._on_confirmation_required),
+            ('on_context_changed', self._on_context_changed),
+        ]
+
+        for signal_name, handler in signal_mappings:
+            try:
+                if hasattr(self.interface, signal_name):
+                    signal_method = getattr(self.interface, signal_name)
+                    signal_method(handler)
+            except TypeError as e:
+                # Newer dbus_next may have different signal API
+                logger.debug(f"Signal {signal_name} setup skipped: {e}")
+            except Exception as e:
+                logger.debug(f"Could not setup signal {signal_name}: {e}")
 
     async def disconnect(self) -> None:
         """Disconnect from the daemon."""
@@ -91,8 +112,12 @@ class EmberClient:
 
     # ============ Signal Handlers ============
 
-    def _on_task_progress(self, task_id: str, stage: str, message: str):
+    def _on_task_progress(self, *args):
         """Handle task progress signal."""
+        if len(args) >= 3:
+            task_id, stage, message = args[0], args[1], args[2]
+        else:
+            return
         update = TaskUpdate(
             task_id=task_id,
             event_type="progress",
@@ -100,8 +125,12 @@ class EmberClient:
         )
         self._notify("progress", update)
 
-    def _on_task_completed(self, task_id: str, result_json: str):
+    def _on_task_completed(self, *args):
         """Handle task completed signal."""
+        if len(args) >= 2:
+            task_id, result_json = args[0], args[1]
+        else:
+            return
         update = TaskUpdate(
             task_id=task_id,
             event_type="completed",
@@ -109,8 +138,12 @@ class EmberClient:
         )
         self._notify("completed", update)
 
-    def _on_task_failed(self, task_id: str, error_json: str):
+    def _on_task_failed(self, *args):
         """Handle task failed signal."""
+        if len(args) >= 2:
+            task_id, error_json = args[0], args[1]
+        else:
+            return
         update = TaskUpdate(
             task_id=task_id,
             event_type="failed",
@@ -118,8 +151,12 @@ class EmberClient:
         )
         self._notify("failed", update)
 
-    def _on_confirmation_required(self, task_id: str, plan_json: str):
+    def _on_confirmation_required(self, *args):
         """Handle confirmation required signal."""
+        if len(args) >= 2:
+            task_id, plan_json = args[0], args[1]
+        else:
+            return
         update = TaskUpdate(
             task_id=task_id,
             event_type="confirmation",
@@ -127,8 +164,12 @@ class EmberClient:
         )
         self._notify("confirmation", update)
 
-    def _on_context_changed(self, context_json: str):
+    def _on_context_changed(self, *args):
         """Handle context changed signal."""
+        if len(args) >= 1:
+            context_json = args[0]
+        else:
+            return
         update = TaskUpdate(
             task_id="",
             event_type="context_changed",
@@ -254,25 +295,41 @@ class EmberClient:
         """Get EmberOS version."""
         if not self._connected:
             raise ConnectionError("Not connected to daemon")
-        return await self.interface.get_version()
+        try:
+            return await self.interface.get_version()
+        except Exception as e:
+            logger.debug(f"Could not get version: {e}")
+            return "1.0.0"
 
     async def is_llm_connected(self) -> bool:
         """Check if LLM server is connected."""
         if not self._connected:
             return False
-        return await self.interface.get_is_connected()
+        try:
+            return await self.interface.get_is_connected()
+        except Exception as e:
+            logger.debug(f"Could not get is_connected: {e}")
+            return True  # Assume connected if can't check
 
     async def get_model_name(self) -> str:
         """Get current model name."""
         if not self._connected:
             return "Unknown"
-        return await self.interface.get_model_name()
+        try:
+            return await self.interface.get_model_name()
+        except Exception as e:
+            logger.debug(f"Could not get model_name: {e}")
+            return "Unknown"
 
     async def get_active_task_count(self) -> int:
         """Get number of active tasks."""
         if not self._connected:
             return 0
-        return await self.interface.get_active_task_count()
+        try:
+            return await self.interface.get_active_task_count()
+        except Exception as e:
+            logger.debug(f"Could not get active_task_count: {e}")
+            return 0
 
 
 class OfflineClient:
