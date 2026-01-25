@@ -51,15 +51,20 @@ python --version
 **Option A: Use Python 3.12 for the virtual environment (Recommended)**
 
 ```bash
-# Install Python 3.12
-sudo pacman -S python312
+# Try official repo first
+sudo pacman -S python3.12
 
-# The install script will use system Python, so create venv manually with Python 3.12:
+# If not found, install from AUR
+yay -S python312
+
+# Then create venv with Python 3.12:
 python3.12 -m venv ~/.local/share/ember/venv
 source ~/.local/share/ember/venv/bin/activate
 pip install -e ~/emberos
 deactivate
 ```
+
+> **Note:** Python 3.12 may be in AUR as `python312` or `python312-bin` if not in official repos.
 
 **Option B: Continue with Python 3.14 (Limited Features)**
 

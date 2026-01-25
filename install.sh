@@ -87,12 +87,27 @@ if [ "$PYTHON_MINOR" -ge 14 ]; then
         echo -e "${GREEN}Python 3.12 found! Using it for better compatibility.${NC}"
         PYTHON_CMD="python3.12"
     else
-        echo -e "${YELLOW}Python 3.12 not found. EmberOS will work but without vector search.${NC}"
-        echo "To enable vector search later, install python312 and recreate the venv:"
-        echo "  sudo pacman -S python312"
-        echo ""
+        echo -e "${YELLOW}Python 3.12 not found. Trying to install...${NC}"
+
+        # Try official package first (python3.12)
+        if sudo pacman -S --needed --noconfirm python3.12 2>/dev/null; then
+            echo -e "${GREEN}Python 3.12 installed successfully!${NC}"
+            PYTHON_CMD="python3.12"
+        # Try AUR package if official not found (python312)
+        elif command -v yay &> /dev/null && yay -S --needed --noconfirm python312 2>/dev/null; then
+            echo -e "${GREEN}Python 3.12 installed from AUR!${NC}"
+            PYTHON_CMD="python3.12"
+        else
+            echo -e "${YELLOW}Could not install Python 3.12 automatically.${NC}"
+            echo "EmberOS will work but without vector search (ChromaDB)."
+            echo ""
+            echo "To install Python 3.12 manually:"
+            echo "  sudo pacman -S python3.12  # or"
+            echo "  yay -S python312            # from AUR"
+            echo ""
+        fi
     fi
-fiecho -e "${BLUE}Step 2: Creating directories...${NC}"
+fi
 
 # Create directories
 mkdir -p "$EMBER_DIR"
