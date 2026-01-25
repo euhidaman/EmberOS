@@ -252,37 +252,37 @@ class EmberAgentInterface(ServiceInterface):
     # ============ Signals ============
 
     @signal()
-    def TaskProgress(self, task_id: 's', stage: 's', message: 's') -> None:
+    def TaskProgress(self, task_id: 's', stage: 's', message: 's') -> '':
         """Emitted when task makes progress."""
         pass
 
     @signal()
-    def TaskCompleted(self, task_id: 's', result_json: 's') -> None:
+    def TaskCompleted(self, task_id: 's', result_json: 's') -> '':
         """Emitted when task completes successfully."""
         pass
 
     @signal()
-    def TaskFailed(self, task_id: 's', error_json: 's') -> None:
+    def TaskFailed(self, task_id: 's', error_json: 's') -> '':
         """Emitted when task fails."""
         pass
 
     @signal()
-    def ConfirmationRequired(self, task_id: 's', plan_json: 's') -> None:
+    def ConfirmationRequired(self, task_id: 's', plan_json: 's') -> '':
         """Emitted when user confirmation is required."""
         pass
 
     @signal()
-    def ContextChanged(self, context_json: 's') -> None:
+    def ContextChanged(self, context_json: 's') -> '':
         """Emitted when system context changes."""
         pass
 
     @signal()
-    def ToolExecutionStarted(self, tool_name: 's', params_json: 's') -> None:
+    def ToolExecutionStarted(self, tool_name: 's', params_json: 's') -> '':
         """Emitted when a tool starts executing."""
         pass
 
     @signal()
-    def ToolExecutionCompleted(self, tool_name: 's', result_json: 's') -> None:
+    def ToolExecutionCompleted(self, tool_name: 's', result_json: 's') -> '':
         """Emitted when a tool completes execution."""
         pass
 
