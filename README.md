@@ -434,6 +434,32 @@ vector_store_path = "~/.local/share/ember/vectors"
 max_conversations = 10000
 ```
 
+### KDE Plasma Integration
+
+EmberOS integrates seamlessly with KDE Plasma:
+
+**Window Management:**
+- If dragging doesn't work: Hold `Alt` and drag anywhere on the window
+- Or use: `Alt + F3` → "Move"
+- Configure window rules in KDE System Settings
+
+**System Integration:**
+- **Notifications:** Uses KDE's notification system
+- **Clipboard:** Works with Klipper (KDE clipboard manager)
+- **System Tray:** Icon appears in KDE system tray
+- **Global Shortcuts:** Assignable in KDE System Settings → Shortcuts
+
+**Recommended KDE Settings:**
+```bash
+# Open KDE System Settings
+systemsettings5
+
+# Navigate to:
+# - Shortcuts → Custom Shortcuts → Add ember-ui command
+# - Window Management → Window Rules → Add rule for EmberOS
+# - Notifications → Applications → Configure EmberOS notifications
+```
+
 ---
 
 ## 🔐 Security

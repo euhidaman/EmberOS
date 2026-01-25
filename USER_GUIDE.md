@@ -630,7 +630,7 @@ EmberOS understands natural language. Here are common patterns:
 
 **Solution:**
 
-This is a known issue on some Linux window managers. Try:
+This is a known issue on some Linux window managers with frameless Qt windows. Try:
 
 1. Restart GUI after pulling latest code:
    ```bash
@@ -641,13 +641,20 @@ This is a known issue on some Linux window managers. Try:
    ```
 
 2. Use your window manager's move function:
-   - **KDE:** `Alt + F3` → Move
+   - **KDE Plasma:** `Alt + F3` → Select "Move" → Use mouse/arrows
+   - **KDE Alternative:** Hold `Alt` and drag anywhere on the window
    - **GNOME:** `Super + Click and Drag`
    - **i3/Sway:** `Super + Click and Drag`
 
 3. Maximize the window (it will fit your screen):
    - Double-click the title bar
    - Or click "Max" button
+
+**For KDE Users:**
+The `Alt + drag` method works best with KDE Plasma. You can also:
+- Right-click title bar → "More Actions" → "Move"
+- Use arrow keys after initiating move mode
+- Configure window rules in KDE System Settings for EmberOS
 
 ---
 

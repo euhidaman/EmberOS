@@ -451,6 +451,34 @@ ember
 
 ---
 
+## KDE Plasma Desktop Integration
+
+If you're using KDE Plasma (which you are!), here are some additional tips:
+
+### Window Management
+
+If the EmberOS window can't be moved by dragging the title bar, use KDE's native window controls:
+
+1. **Move Window:** `Alt + F3` → Select "Move" → Use mouse or arrow keys
+2. **Or:** Hold `Alt` and drag anywhere on the window
+3. **Resize:** Drag window edges/corners normally
+
+### KDE-Specific Features
+
+EmberOS integrates well with KDE Plasma:
+
+- **System Tray:** EmberOS icon appears in KDE system tray (when enabled in config)
+- **Notifications:** Desktop notifications use KDE's notification system
+- **Global Shortcuts:** You can assign keyboard shortcuts in KDE System Settings
+  - Go to: System Settings → Shortcuts → Custom Shortcuts
+  - Add: `ember-ui` or `ember` commands
+
+### Clipboard Integration
+
+EmberOS uses `xclip` which works perfectly with KDE's Klipper clipboard manager. The `system.clipboard` tool can read/write to your KDE clipboard.
+
+---
+
 ## Troubleshooting
 
 ### LLM Server Won't Start
