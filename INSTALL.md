@@ -335,21 +335,54 @@ systemctl --user daemon-reload
 
 ---
 
-## Step 9: Enable and Start Services
+## Step 9: Enable and start services
 
 ```bash
 # Enable and start the LLM server
 systemctl --user enable --now ember-llm
 
-# Check if LLM server is running
+# Check if it's running
 systemctl --user status ember-llm
 
 # Enable and start the EmberOS daemon
 systemctl --user enable --now emberd
 
-# Check if daemon is running
+# Check if it's running
 systemctl --user status emberd
 ```
+
+> **Note:** The `enable` flag makes services start automatically when you log in. They will persist across reboots!
+
+### Verify Auto-start is Enabled
+
+```bash
+systemctl --user is-enabled ember-llm
+systemctl --user is-enabled emberd
+# Both should show: enabled
+```
+
+### Port Configuration
+
+EmberOS uses **port 11434** for the LLM server (less commonly used than 8080). If you need to change it:
+
+1. Edit the service file:
+   ```bash
+   nano ~/.config/systemd/user/ember-llm.service
+   # Change --port 11434 to your desired port
+   ```
+
+2. Edit the config file:
+   ```bash
+   nano ~/.config/ember/emberos.toml
+   # Change server_url = "http://127.0.0.1:11434" to match
+   ```
+
+3. Reload and restart:
+   ```bash
+   systemctl --user daemon-reload
+   systemctl --user restart ember-llm
+   systemctl --user restart emberd
+   ```
 
 ---
 

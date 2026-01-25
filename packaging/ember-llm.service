@@ -8,7 +8,7 @@ Type=simple
 ExecStart=/usr/bin/llama-server \
     --model /usr/local/share/ember/models/qwen2.5-vl-7b-instruct-q4_k_m.gguf \
     --host 127.0.0.1 \
-    --port 8080 \
+    --port 11434 \
     --ctx-size 8192 \
     --threads 4 \
     --n-gpu-layers 0
