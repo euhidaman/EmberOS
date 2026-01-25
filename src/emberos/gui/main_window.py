@@ -171,6 +171,11 @@ class EmberMainWindow(QMainWindow):
         self.input_deck.message_submitted.connect(self._on_message_submitted)
         self.input_deck.cancel_clicked.connect(self._on_cancel_clicked)
 
+        # Initialize theme button state
+        app = QApplication.instance()
+        if hasattr(app, 'current_theme'):
+            self.title_bar.update_theme_button(app.current_theme)
+
     def _start_background_tasks(self) -> None:
         """Start background update tasks."""
         # Status update timer

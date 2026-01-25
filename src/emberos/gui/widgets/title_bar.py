@@ -120,6 +120,7 @@ class TitleBar(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
 
+        self._drag_pos = None
         self._setup_ui()
 
     def _setup_ui(self) -> None:
@@ -192,3 +193,31 @@ class TitleBar(QFrame):
         else:
             self.theme_btn.setText("☾ Dark")
             self.theme_btn.setToolTip("Switch to Dark Mode")
+
+    def mousePressEvent(self, event) -> None:
+        """Handle mouse press for window dragging."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            # Get the main window
+            window = self.window()
+            self._drag_pos = event.globalPosition().toPoint() - window.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event) -> None:
+        """Handle mouse move for window dragging."""
+        if self._drag_pos is not None and event.buttons() == Qt.MouseButton.LeftButton:
+            # Move the main window
+            window = self.window()
+            window.move(event.globalPosition().toPoint() - self._drag_pos)
+            event.accept()
+
+    def mouseReleaseEvent(self, event) -> None:
+        """Handle mouse release."""
+        self._drag_pos = None
+        event.accept()
+
+    def mouseDoubleClickEvent(self, event) -> None:
+        """Handle double-click to maximize/restore."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.maximize_clicked.emit()
+            event.accept()
+
