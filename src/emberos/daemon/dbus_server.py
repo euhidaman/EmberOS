@@ -18,6 +18,19 @@ from dbus_next.aio import MessageBus
 from dbus_next.service import ServiceInterface, method, signal, dbus_property
 from dbus_next import Variant, BusType
 
+# PropertyAccess may be in different locations depending on dbus_next version
+try:
+    from dbus_next.service import PropertyAccess
+except ImportError:
+    try:
+        from dbus_next import PropertyAccess
+    except ImportError:
+        # Fallback: create a simple enum-like class
+        class PropertyAccess:
+            READ = 'read'
+            WRITE = 'write'
+            READWRITE = 'readwrite'
+
 from emberos.core.constants import DBUS_NAME, DBUS_PATH, DBUS_INTERFACE
 
 logger = logging.getLogger(__name__)
@@ -288,23 +301,23 @@ class EmberAgentInterface(ServiceInterface):
 
     # ============ Properties ============
 
-    @dbus_property(access='read')
+    @dbus_property(access=PropertyAccess.READ)
     def Version(self) -> 's':
         """EmberOS version."""
         from emberos import __version__
         return __version__
 
-    @dbus_property(access='read')
+    @dbus_property(access=PropertyAccess.READ)
     def IsConnected(self) -> 'b':
         """Whether LLM server is connected."""
         return self.daemon.llm.is_connected
 
-    @dbus_property(access='read')
+    @dbus_property(access=PropertyAccess.READ)
     def ModelName(self) -> 's':
         """Current model name."""
         return self.daemon.llm.model_name or "Unknown"
 
-    @dbus_property(access='read')
+    @dbus_property(access=PropertyAccess.READ)
     def ActiveTaskCount(self) -> 'i':
         """Number of active tasks."""
         return self.daemon.active_task_count

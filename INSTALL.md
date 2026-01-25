@@ -418,12 +418,24 @@ ember
 
 2. Check daemon logs:
    ```bash
-   journalctl --user -u emberd -f
+   journalctl --user -u emberd -n 50 --no-pager
    ```
 
 3. Ensure D-Bus is running:
    ```bash
    systemctl --user status dbus
+   ```
+
+4. Test daemon manually to see detailed errors:
+   ```bash
+   ~/.local/share/ember/venv/bin/emberd
+   ```
+
+5. If you see D-Bus property errors, ensure you have the latest code:
+   ```bash
+   cd ~/EmberOS
+   git pull
+   systemctl --user restart emberd
    ```
 
 ### Permission Errors
