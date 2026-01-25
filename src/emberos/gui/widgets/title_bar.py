@@ -159,7 +159,7 @@ class TitleBar(QFrame):
         layout.addStretch()
 
         # Theme toggle button
-        self.theme_btn = WindowButton("☀", hover_color="#404050")  # Sun icon for light mode toggle
+        self.theme_btn = WindowButton("◐", hover_color="#404050")  # Half-circle icon for theme toggle
         self.theme_btn.setToolTip("Toggle Light/Dark Mode")
         self.theme_btn.clicked.connect(self.theme_toggle_clicked.emit)
         layout.addWidget(self.theme_btn)
@@ -184,8 +184,8 @@ class TitleBar(QFrame):
     def update_theme_button(self, theme: str) -> None:
         """Update theme button icon based on current theme."""
         if theme == "dark":
-            self.theme_btn.setText("☀")  # Sun icon for light mode toggle
+            self.theme_btn.setText("◐")  # Half-circle icon
             self.theme_btn.setToolTip("Switch to Light Mode")
         else:
-            self.theme_btn.setText("☾")  # Moon icon for dark mode toggle
+            self.theme_btn.setText("◑")  # Inverted half-circle icon
             self.theme_btn.setToolTip("Switch to Dark Mode")
