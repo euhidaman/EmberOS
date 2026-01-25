@@ -560,6 +560,36 @@ systemctl --user restart ember-llm
 
 ---
 
+## Reloading GUI After Code Changes
+
+If you update the EmberOS code (via `git pull` or manual edits), you need to restart the GUI to see changes:
+
+### Manual Restart
+
+```bash
+# Kill existing GUI
+pkill -f ember-ui
+
+# Reinstall package (picks up changes in editable mode)
+cd ~/EmberOS
+source ~/.local/share/ember/venv/bin/activate
+pip install -e .
+deactivate
+
+# Start GUI
+ember-ui
+```
+
+### For Daemon Changes
+
+If you modified daemon code, restart the daemon:
+
+```bash
+systemctl --user restart emberd
+```
+
+---
+
 ## Uninstall
 
 To remove EmberOS:
@@ -595,4 +625,6 @@ sudo rm -rf /usr/local/share/ember
 - **Documentation:** https://docs.emberos.org
 - **Issues:** https://github.com/emberos/emberos/issues
 - **Discussions:** https://github.com/emberos/emberos/discussions
+
+
 

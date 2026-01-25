@@ -67,6 +67,8 @@ class EmberMainWindow(QMainWindow):
 
         # Enable translucency
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+        # Set window flags for frameless window
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint |
             Qt.WindowType.Window
@@ -80,6 +82,9 @@ class EmberMainWindow(QMainWindow):
             self.setWindowFlags(
                 self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint
             )
+
+        # Enable mouse tracking for the window
+        self.setMouseTracking(True)
 
     def _setup_tray(self) -> None:
         """Setup system tray icon."""
@@ -295,13 +300,4 @@ class EmberMainWindow(QMainWindow):
         else:
             event.accept()
 
-    def mousePressEvent(self, event) -> None:
-        """Handle mouse press for window dragging."""
-        if event.button() == Qt.MouseButton.LeftButton:
-            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
-
-    def mouseMoveEvent(self, event) -> None:
-        """Handle mouse move for window dragging."""
-        if hasattr(self, '_drag_pos') and event.buttons() == Qt.MouseButton.LeftButton:
-            self.move(event.globalPosition().toPoint() - self._drag_pos)
 

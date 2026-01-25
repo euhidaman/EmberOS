@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QLabel, QPushButton, QFrame
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
-from PyQt6.QtGui import QFont, QColor, QPainter, QLinearGradient, QBrush, QPixmap
+from PyQt6.QtGui import QFont, QColor, QPainter, QLinearGradient, QBrush, QPixmap, QCursor
 
 from emberos.core.constants import EMBER_ORANGE, EMBER_ORANGE_LIGHT, APP_NAME, DATA_DIR
 
@@ -127,6 +127,10 @@ class TitleBar(QFrame):
         """Setup the title bar UI."""
         self.setObjectName("titleBar")
         self.setFixedHeight(48)
+
+        # Enable mouse tracking for proper drag handling
+        self.setMouseTracking(True)
+
         self.setStyleSheet("""
             QFrame#titleBar {
                 background: qlineargradient(
@@ -197,9 +201,16 @@ class TitleBar(QFrame):
     def mousePressEvent(self, event) -> None:
         """Handle mouse press for window dragging."""
         if event.button() == Qt.MouseButton.LeftButton:
+            # Don't start drag if clicking on buttons
+            widget = self.childAt(event.pos())
+            if widget and isinstance(widget, WindowButton):
+                event.ignore()
+                return
+
             # Get the main window
             window = self.window()
-            self._drag_pos = event.globalPosition().toPoint() - window.frameGeometry().topLeft()
+            self._drag_pos = event.globalPosition().toPoint() - window.pos()
+            self.setCursor(QCursor(Qt.CursorShape.ClosedHandCursor))
             event.accept()
 
     def mouseMoveEvent(self, event) -> None:
@@ -209,15 +220,35 @@ class TitleBar(QFrame):
             window = self.window()
             window.move(event.globalPosition().toPoint() - self._drag_pos)
             event.accept()
+        else:
+            # Update cursor based on what we're hovering over
+            widget = self.childAt(event.pos())
+            if widget and isinstance(widget, WindowButton):
+                self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            else:
+                self.setCursor(QCursor(Qt.CursorShape.OpenHandCursor))
 
     def mouseReleaseEvent(self, event) -> None:
         """Handle mouse release."""
-        self._drag_pos = None
-        event.accept()
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = None
+            # Reset cursor
+            widget = self.childAt(event.pos())
+            if widget and isinstance(widget, WindowButton):
+                self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+            else:
+                self.setCursor(QCursor(Qt.CursorShape.OpenHandCursor))
+            event.accept()
 
     def mouseDoubleClickEvent(self, event) -> None:
         """Handle double-click to maximize/restore."""
         if event.button() == Qt.MouseButton.LeftButton:
+            # Don't maximize if clicking on buttons
+            widget = self.childAt(event.pos())
+            if widget and isinstance(widget, WindowButton):
+                event.ignore()
+                return
+
             self.maximize_clicked.emit()
             event.accept()
 
