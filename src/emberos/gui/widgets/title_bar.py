@@ -20,29 +20,32 @@ class WindowButton(QPushButton):
     Custom window control button with hover effects.
     """
 
-    def __init__(self, symbol: str, hover_color: str = "#505060"):
-        super().__init__(symbol)
+    def __init__(self, text: str, hover_color: str = "#505060", width: int = 70):
+        super().__init__(text)
 
         self._hover_color = hover_color
-        self.setFixedSize(32, 32)
+        self.setFixedSize(width, 32)
         self._setup_style()
 
     def _setup_style(self) -> None:
         """Setup button styling."""
         self.setStyleSheet(f"""
             QPushButton {{
-                background-color: transparent;
-                border: none;
+                background-color: rgba(42, 42, 56, 0.8);
+                border: 1px solid rgba(255, 107, 53, 0.2);
                 border-radius: 6px;
-                color: #808090;
-                font-size: 14px;
+                color: #f0f0fa;
+                font-size: 11px;
+                font-weight: 600;
+                padding: 4px 8px;
             }}
             QPushButton:hover {{
                 background-color: {self._hover_color};
-                color: #f0f0fa;
+                border-color: rgba(255, 107, 53, 0.5);
+                color: #ffffff;
             }}
             QPushButton:pressed {{
-                background-color: rgba(80, 80, 96, 0.8);
+                background-color: rgba(255, 107, 53, 0.6);
             }}
         """)
 
@@ -158,22 +161,22 @@ class TitleBar(QFrame):
 
         layout.addStretch()
 
-        # Theme toggle button
-        self.theme_btn = WindowButton("◐", hover_color="#404050")  # Half-circle icon for theme toggle
+        # Theme toggle button (wider for icon + text)
+        self.theme_btn = WindowButton("Theme", hover_color="#404050", width=90)
         self.theme_btn.setToolTip("Toggle Light/Dark Mode")
         self.theme_btn.clicked.connect(self.theme_toggle_clicked.emit)
         layout.addWidget(self.theme_btn)
 
         # Window controls
-        self.minimize_btn = WindowButton("−")
+        self.minimize_btn = WindowButton("Min", hover_color="#505060", width=60)
         self.minimize_btn.clicked.connect(self.minimize_clicked.emit)
         layout.addWidget(self.minimize_btn)
 
-        self.maximize_btn = WindowButton("⧉")
+        self.maximize_btn = WindowButton("Max", hover_color="#505060", width=60)
         self.maximize_btn.clicked.connect(self.maximize_clicked.emit)
         layout.addWidget(self.maximize_btn)
 
-        self.close_btn = WindowButton("×", hover_color="#e81123")
+        self.close_btn = WindowButton("Close", hover_color="#e81123", width=70)
         self.close_btn.clicked.connect(self.close_clicked.emit)
         layout.addWidget(self.close_btn)
 
@@ -182,10 +185,10 @@ class TitleBar(QFrame):
         self.title_label.setText(title)
 
     def update_theme_button(self, theme: str) -> None:
-        """Update theme button icon based on current theme."""
+        """Update theme button text based on current theme."""
         if theme == "dark":
-            self.theme_btn.setText("◐")  # Half-circle icon
+            self.theme_btn.setText("☀ Light")
             self.theme_btn.setToolTip("Switch to Light Mode")
         else:
-            self.theme_btn.setText("◑")  # Inverted half-circle icon
+            self.theme_btn.setText("☾ Dark")
             self.theme_btn.setToolTip("Switch to Dark Mode")
