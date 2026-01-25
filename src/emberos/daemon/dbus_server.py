@@ -288,23 +288,23 @@ class EmberAgentInterface(ServiceInterface):
 
     # ============ Properties ============
 
-    @dbus_property()
+    @dbus_property(access='read')
     def Version(self) -> 's':
         """EmberOS version."""
         from emberos import __version__
         return __version__
 
-    @dbus_property()
+    @dbus_property(access='read')
     def IsConnected(self) -> 'b':
         """Whether LLM server is connected."""
         return self.daemon.llm.is_connected
 
-    @dbus_property()
+    @dbus_property(access='read')
     def ModelName(self) -> 's':
         """Current model name."""
         return self.daemon.llm.model_name or "Unknown"
 
-    @dbus_property()
+    @dbus_property(access='read')
     def ActiveTaskCount(self) -> 'i':
         """Number of active tasks."""
         return self.daemon.active_task_count
