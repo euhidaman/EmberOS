@@ -195,20 +195,55 @@ echo.
 :: ============================================================
 echo [Step 4/6] Setting up EmberOS...
 
-:: Create venv using our isolated Python
+:: Create venv using virtualenv (embedded Python doesn't have venv module)
 if not exist "%VENV_DIR%" (
+    echo   Installing virtualenv...
+    "%EMBER_PIP%" install virtualenv -q 2>nul
+
     echo   Creating virtual environment with isolated Python...
-    "%EMBER_PYTHON%" -m venv "%VENV_DIR%"
+    "%EMBER_PYTHON%" -m virtualenv "%VENV_DIR%" -q
 
     if not exist "%VENV_PYTHON%" (
         echo   [ERROR] Failed to create virtual environment
-        pause
-        exit /b 1
+        echo   Trying alternative method...
+
+        :: Alternative: Use pip directly with --target
+        if not exist "%VENV_DIR%" mkdir "%VENV_DIR%"
+        if not exist "%VENV_DIR%\Scripts" mkdir "%VENV_DIR%\Scripts"
+
+        :: Copy Python to venv
+        xcopy /E /I /Q /Y "%EMBER_PYTHON_DIR%" "%VENV_DIR%" >nul 2>&1
+
+        :: Move to Scripts folder structure
+        if not exist "%VENV_DIR%\Scripts\python.exe" (
+            copy "%EMBER_PYTHON%" "%VENV_DIR%\Scripts\python.exe" >nul 2>&1
+            copy "%EMBER_PYTHON_DIR%\pythonw.exe" "%VENV_DIR%\Scripts\pythonw.exe" >nul 2>&1
+            copy "%EMBER_PYTHON_DIR%\python*.dll" "%VENV_DIR%\Scripts\" >nul 2>&1
+        )
+
+        if not exist "%VENV_PYTHON%" (
+            echo   [ERROR] Failed to create virtual environment
+            pause
+            exit /b 1
+        )
+    )
+)
+
+:: Ensure pip is available in venv
+if not exist "%VENV_PIP%" (
+    echo   Setting up pip in virtual environment...
+    "%VENV_PYTHON%" -m ensurepip --default-pip 2>nul
+
+    :: If still not available, copy from base Python
+    if not exist "%VENV_PIP%" (
+        if exist "%EMBER_PIP%" (
+            copy "%EMBER_PIP%" "%VENV_PIP%" >nul 2>&1
+        )
     )
 )
 
 echo   Upgrading pip...
-"%VENV_PIP%" install --upgrade pip -q 2>nul
+"%VENV_PYTHON%" -m pip install --upgrade pip -q 2>nul
 
 :: Get the script directory (where EmberOS source is)
 set "SCRIPT_DIR=%~dp0"
@@ -216,12 +251,28 @@ set "SCRIPT_DIR=%~dp0"
 :: Check if we're in the EmberOS source directory
 if exist "%SCRIPT_DIR%pyproject.toml" (
     echo   Installing EmberOS from source (this may take a few minutes)...
-    "%VENV_PIP%" install -e "%SCRIPT_DIR%[documents]" -q
+
+    :: First install wheel and setuptools
+    "%VENV_PYTHON%" -m pip install wheel setuptools -q 2>nul
+
+    :: Try to install with documents support
+    "%VENV_PYTHON%" -m pip install -e "%SCRIPT_DIR%[documents]" -q 2>nul
 
     if %errorlevel% neq 0 (
         echo   [WARNING] Some optional dependencies may not have installed
         echo   Trying basic installation...
-        "%VENV_PIP%" install -e "%SCRIPT_DIR%" -q
+        "%VENV_PYTHON%" -m pip install -e "%SCRIPT_DIR%" -q 2>nul
+
+        if %errorlevel% neq 0 (
+            echo   [ERROR] Failed to install EmberOS
+            echo   Trying to install core dependencies individually...
+
+            :: Install core dependencies manually
+            "%VENV_PYTHON%" -m pip install aiohttp pydantic pyyaml toml PyQt6 rich click aiosqlite psutil watchdog appdirs python-dateutil numpy -q
+
+            :: Try installing again
+            "%VENV_PYTHON%" -m pip install -e "%SCRIPT_DIR%" -q
+        )
     )
 ) else (
     echo   [ERROR] EmberOS source not found!
@@ -342,7 +393,7 @@ set /p DOWNLOAD_MODELS="Would you like to download the AI models now? (Y/N): "
 if /i "%DOWNLOAD_MODELS%"=="Y" (
     echo.
     echo   Installing huggingface_hub...
-    "%VENV_PIP%" install huggingface_hub -q
+    "%VENV_PYTHON%" -m pip install huggingface_hub -q 2>nul
 
     echo.
     echo   Downloading BitNet model (~1.2 GB)...
