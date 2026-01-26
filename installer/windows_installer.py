@@ -31,8 +31,10 @@ from PyQt6.QtGui import QFont, QPixmap, QIcon, QPalette, QColor
 
 EMBER_VERSION = "1.0.0"
 PYTHON_VERSION = "3.12.8"
-PYTHON_URL = f"https://www.python.org/ftp/python/{PYTHON_VERSION}/python-{PYTHON_VERSION}-amd64.exe"
+# Use embedded Python for fully self-contained installation
+PYTHON_URL = f"https://www.python.org/ftp/python/{PYTHON_VERSION}/python-{PYTHON_VERSION}-embed-amd64.zip"
 LLAMA_CPP_URL = "https://github.com/ggerganov/llama.cpp/releases/download/b4598/llama-b4598-bin-win-avx2-x64.zip"
+GET_PIP_URL = "https://bootstrap.pypa.io/get-pip.py"
 
 # Model URLs
 VISION_MODEL_REPO = "PatataAliena/Qwen2.5-VL-7B-Instruct-Q4_K_M-GGUF"
@@ -182,30 +184,51 @@ class InstallWorker(QThread):
         return steps
 
     def _install_python(self) -> bool:
-        self.log.emit("Downloading Python installer...")
-        installer_path = os.path.join(tempfile.gettempdir(), "python-installer.exe")
+        self.log.emit("Downloading Python embeddable package...")
+        install_dir = self.config.get('install_dir', DEFAULT_INSTALL_DIR)
+        python_dir = os.path.join(install_dir, 'python')
+        python_zip = os.path.join(tempfile.gettempdir(), "python-embed.zip")
 
         try:
-            urllib.request.urlretrieve(PYTHON_URL, installer_path)
-            self.log.emit("Running Python installer (silent mode)...")
+            # Download embedded Python
+            urllib.request.urlretrieve(PYTHON_URL, python_zip)
+            self.log.emit("Extracting Python...")
 
-            result = subprocess.run([
-                installer_path,
-                "/passive",
-                "InstallAllUsers=0",
-                "PrependPath=1",
-                "Include_test=0",
-                "Include_launcher=1"
-            ], capture_output=True, timeout=600)
+            # Create directory and extract
+            os.makedirs(python_dir, exist_ok=True)
+            with zipfile.ZipFile(python_zip, 'r') as zip_ref:
+                zip_ref.extractall(python_dir)
 
-            os.remove(installer_path)
+            os.remove(python_zip)
+
+            # Enable pip support by modifying ._pth file
+            self.log.emit("Configuring Python...")
+            pth_file = os.path.join(python_dir, 'python312._pth')
+            if os.path.exists(pth_file):
+                with open(pth_file, 'r') as f:
+                    content = f.read()
+                content = content.replace('#import site', 'import site')
+                with open(pth_file, 'w') as f:
+                    f.write(content)
+
+            # Download and install pip
+            self.log.emit("Installing pip...")
+            get_pip = os.path.join(tempfile.gettempdir(), "get-pip.py")
+            urllib.request.urlretrieve(GET_PIP_URL, get_pip)
+
+            python_exe = os.path.join(python_dir, 'python.exe')
+            result = subprocess.run([python_exe, get_pip, '--no-warn-script-location'],
+                                  capture_output=True, timeout=300)
+
+            os.remove(get_pip)
 
             if result.returncode == 0:
-                self.log.emit("Python installed successfully!")
+                self.log.emit("Python embedded package installed successfully!")
                 return True
             else:
-                self.log.emit(f"Python installer returned code: {result.returncode}")
+                self.log.emit(f"pip installation had issues: {result.stderr.decode()}")
                 return False
+
         except Exception as e:
             self.log.emit(f"Error installing Python: {e}")
             return False
@@ -256,26 +279,64 @@ class InstallWorker(QThread):
     def _create_venv(self) -> bool:
         install_dir = self.config.get('install_dir', DEFAULT_INSTALL_DIR)
         venv_dir = os.path.join(install_dir, 'venv')
+        python_dir = os.path.join(install_dir, 'python')
+        python_exe = os.path.join(python_dir, 'python.exe')
+        pip_exe = os.path.join(python_dir, 'Scripts', 'pip.exe')
 
         try:
-            # Find Python
-            python_cmd = self._find_python()
-            if not python_cmd:
-                self.log.emit("Python not found!")
+            # If we installed our own Python, use it
+            if os.path.exists(python_exe):
+                self.log.emit(f"Using EmberOS Python: {python_exe}")
+
+                # Install virtualenv first (embedded Python doesn't have venv module)
+                self.log.emit("Installing virtualenv...")
+                subprocess.run([pip_exe, 'install', 'virtualenv', '-q'],
+                             capture_output=True, timeout=300)
+
+                # Create venv using virtualenv
+                self.log.emit("Creating virtual environment...")
+                result = subprocess.run([python_exe, '-m', 'virtualenv', venv_dir, '-q'],
+                                      capture_output=True, text=True, timeout=300)
+
+                if result.returncode != 0:
+                    self.log.emit(f"virtualenv creation failed: {result.stderr}")
+                    # Try alternative: copy Python directory
+                    self.log.emit("Trying alternative method...")
+                    shutil.copytree(python_dir, venv_dir, dirs_exist_ok=True)
+            else:
+                # Find system Python
+                python_cmd = self._find_python()
+                if not python_cmd:
+                    self.log.emit("Python not found!")
+                    return False
+
+                self.log.emit(f"Using system Python: {python_cmd}")
+
+                # Try standard venv first
+                result = subprocess.run([python_cmd, '-m', 'venv', venv_dir],
+                                      capture_output=True, text=True)
+                if result.returncode != 0:
+                    # Try virtualenv as fallback
+                    self.log.emit("Standard venv failed, trying virtualenv...")
+                    subprocess.run([python_cmd, '-m', 'pip', 'install', 'virtualenv', '-q'],
+                                 capture_output=True)
+                    result = subprocess.run([python_cmd, '-m', 'virtualenv', venv_dir],
+                                          capture_output=True, text=True)
+                    if result.returncode != 0:
+                        self.log.emit(f"venv creation failed: {result.stderr}")
+                        return False
+
+            # Verify venv was created
+            venv_python = os.path.join(venv_dir, 'Scripts', 'python.exe')
+            if not os.path.exists(venv_python):
+                self.log.emit("Virtual environment creation failed!")
                 return False
 
-            self.log.emit(f"Using Python: {python_cmd}")
-
-            # Create venv
-            result = subprocess.run([python_cmd, '-m', 'venv', venv_dir],
-                                  capture_output=True, text=True)
-            if result.returncode != 0:
-                self.log.emit(f"venv creation failed: {result.stderr}")
-                return False
-
-            # Upgrade pip
-            pip_path = os.path.join(venv_dir, 'Scripts', 'pip.exe')
-            subprocess.run([pip_path, 'install', '--upgrade', 'pip'], capture_output=True)
+            # Upgrade pip in venv
+            venv_pip = os.path.join(venv_dir, 'Scripts', 'pip.exe')
+            if os.path.exists(venv_pip):
+                subprocess.run([venv_python, '-m', 'pip', 'install', '--upgrade', 'pip', '-q'],
+                             capture_output=True, timeout=300)
 
             self.log.emit("Virtual environment created!")
             return True

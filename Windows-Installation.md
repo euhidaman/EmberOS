@@ -28,7 +28,80 @@ The installer creates a completely isolated environment:
 
 **EmberOS will work perfectly without conflicts!**
 
-## One-Click Installation (Recommended)
+## Graphical Installer (Easiest - Recommended)
+
+### Just Double-Click to Install!
+
+1. Download or clone the EmberOS repository
+2. **Double-click `EmberOS-Setup-GUI.bat`**
+3. Follow the graphical wizard:
+   - Click "Next" through welcome screen
+   - Installer automatically checks for Python/llama.cpp
+   - Choose installation location
+   - Select which AI models to download
+   - Choose options (shortcuts, auto-start, PATH)
+   - Click "Install" and watch progress
+   - Click "Finish"
+
+**Features of the GUI installer:**
+- 🎨 Beautiful graphical interface
+- 📊 Real-time progress bars
+- 📝 Detailed installation logs
+- ✅ Automatic dependency detection
+- ⚙️ Configurable options with checkboxes
+- 🚀 Launch EmberOS immediately after install
+
+### What the Wizard Looks Like:
+
+```
+┌─────────────────────────────────────────────┐
+│  Welcome to EmberOS                         │
+│  ═══════════════════                        │
+│                                             │
+│  🔥 EmberOS v1.0.0                         │
+│                                             │
+│  EmberOS transforms your Windows desktop   │
+│  into an AI-native environment...          │
+│                                             │
+│  [Next >]                                  │
+└─────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────┐
+│  Components                                 │
+│  ══════════                                │
+│                                             │
+│  AI Models:                                │
+│  ☑ Qwen2.5-VL Vision Model (~5 GB)        │
+│  ☑ BitNet Text Model (~1.2 GB)            │
+│                                             │
+│  Options:                                   │
+│  ☑ Create Start Menu shortcut             │
+│  ☑ Add EmberOS to PATH                    │
+│  ☐ Start LLM servers on login             │
+│                                             │
+│  [< Back]  [Install]                       │
+└─────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────┐
+│  Installing                                 │
+│  ══════════                                │
+│                                             │
+│  [████████████████░░░░] 85%               │
+│                                             │
+│  Downloading BitNet model...               │
+│                                             │
+│  Log:                                      │
+│  ✓ Python installed                        │
+│  ✓ llama.cpp installed                     │
+│  ✓ EmberOS package installed               │
+│  → Downloading model...                    │
+│                                             │
+└─────────────────────────────────────────────┘
+```
+
+## Command-Line Installer (Alternative)
+
+If you prefer a terminal-based installer:
 
 ### Just Double-Click to Install!
 
