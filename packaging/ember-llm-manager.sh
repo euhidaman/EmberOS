@@ -10,13 +10,13 @@ VISION_MODEL="/usr/local/share/ember/models/qwen2.5-vl-7b-instruct-q4_k_m.gguf"
 BITNET_SERVER="/usr/local/bin/bitnet-server"
 VISION_SERVER="/usr/bin/llama-server"
 
-# Start BitNet (text model) on port 8080
+# Start BitNet (text model) on port 38080
 if [ -f "$BITNET_MODEL" ] && [ -x "$BITNET_SERVER" ]; then
-    echo "Starting BitNet text model on port 8080..."
+    echo "Starting BitNet text model on port 38080..."
     "$BITNET_SERVER" \
         --model "$BITNET_MODEL" \
         --host 127.0.0.1 \
-        --port 8080 \
+        --port 38080 \
         --ctx-size 4096 \
         --threads 4 \
         --n-gpu-layers 0 \

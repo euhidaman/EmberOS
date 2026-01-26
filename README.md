@@ -82,7 +82,7 @@ systemctl --user enable --now ember-llm emberd
 
 # 6. Verify and launch
 systemctl --user status ember-llm emberd
-curl http://127.0.0.1:8080/health && curl http://127.0.0.1:11434/health
+curl http://127.0.0.1:38080/health && curl http://127.0.0.1:11434/health
 ember-ui  # or: ember
 ```
 

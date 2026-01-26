@@ -133,7 +133,7 @@ class LLMOrchestrator:
                     except Exception:
                         self._text_model_name = "BitNet"
 
-                    logger.info(f"Connected to text model: {self._text_model_name} (port 8080)")
+                    logger.info(f"Connected to text model: {self._text_model_name} (port 38080)")
                     return True
         except Exception as e:
             logger.debug(f"Text model not available: {e}")
