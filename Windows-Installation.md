@@ -9,92 +9,97 @@ This guide covers installing and running EmberOS on Windows 10/11.
 - 10GB free disk space for models
 - Internet connection (for downloading models)
 
-## Quick Installation (Recommended)
+## One-Click Installation (Recommended)
 
-### Option 1: Use the Installer EXE (Easiest)
+### Just Double-Click to Install!
 
-1. Download `EmberOS-Setup.exe` from the [Releases page](https://github.com/emberos/emberos/releases)
-2. Run the installer
-3. Follow the wizard:
-   - The installer will automatically install Python if not found
-   - The installer will automatically install llama.cpp if not found
-   - Choose which AI models to download
-   - Select installation options (shortcuts, auto-start, etc.)
-4. Click "Install" and wait for completion
-5. Launch EmberOS from the Start Menu or run `ember-ui`
+1. Download or clone the EmberOS repository
+2. **Double-click `EmberOS-Install.bat`**
+3. Follow the on-screen prompts
 
-The installer handles everything automatically:
-- ✅ Python 3.12 installation
-- ✅ llama.cpp installation  
-- ✅ Virtual environment setup
-- ✅ AI model downloads
-- ✅ Start Menu shortcuts
-- ✅ PATH configuration
-- ✅ Auto-start setup (optional)
+**That's it!** The installer automatically:
+- ✅ Installs Python 3.12 (if not found)
+- ✅ Installs llama.cpp (if not found)
+- ✅ Creates virtual environment
+- ✅ Installs EmberOS with all dependencies
+- ✅ Creates Start Menu shortcut
+- ✅ Adds EmberOS to PATH
+- ✅ Optionally downloads AI models
 
-### Option 2: Build the Installer Yourself
+### What You'll See:
 
-If you want to build the installer from source:
-
-```powershell
-# Clone the repository
-git clone https://github.com/emberos/emberos
-cd emberos
-
-# Install PyInstaller
-pip install pyinstaller PyQt6
-
-# Build the installer
-python installer/build_installer.py
-
-# The installer will be at: installer/dist/EmberOS-Setup.exe
+```
+╔══════════════════════════════════════════════════════════════╗
+║  EmberOS Windows Installer v1.0.0                            ║
+║  ================================                            ║
+║                                                              ║
+║  [Step 1/6] Checking for Python...                          ║
+║    [OK] Found Python 3.12                                   ║
+║                                                              ║
+║  [Step 2/6] Checking for llama.cpp...                       ║
+║    Installing llama.cpp...                                  ║
+║    [OK] llama.cpp installed                                 ║
+║                                                              ║
+║  [Step 3/6] Creating directories...                         ║
+║    [OK] Directories created                                 ║
+║                                                              ║
+║  [Step 4/6] Setting up EmberOS...                           ║
+║    [OK] EmberOS installed                                   ║
+║                                                              ║
+║  [Step 5/6] Creating launchers and shortcuts...             ║
+║    [OK] Launchers and shortcuts created                     ║
+║                                                              ║
+║  [Step 6/6] AI Models Setup                                 ║
+║    Would you like to download the AI models now? (Y/N):     ║
+╚══════════════════════════════════════════════════════════════╝
 ```
 
-### Option 3: PowerShell Script
+## Alternative Installation Methods
+
+### Option 1: PowerShell Script (More Options)
 
 ```powershell
-# Clone and run the PowerShell installer
+# Clone and run
 git clone https://github.com/emberos/emberos
 cd emberos
-
-# Run installer (will install Python if needed)
 Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
 .\install_windows.ps1 -InstallPython -InstallLlamaCpp
 ```
 
-## Manual Installation
+### Option 2: Build GUI Installer EXE
 
-If you prefer manual control, follow these steps:
+If you want a traditional GUI wizard installer:
 
-### Step 1: Install Python
-
-**Option A: Using Winget (Recommended - Automatic)**
-
-Open PowerShell as Administrator and run:
 ```powershell
-# Install Python 3.12 automatically
-winget install Python.Python.3.12
-
-# Restart your terminal after installation, then verify:
-python --version
+pip install pyinstaller PyQt6
+python installer/build_installer.py
+# Run: installer/dist/EmberOS-Setup.exe
 ```
 
-**Option B: Using the Installer Script**
+## After Installation
 
-Our installer can download and install Python for you:
-```powershell
-# Run with -InstallPython flag
-.\install_windows.ps1 -InstallPython
+### Starting EmberOS
+
+Open a **new** terminal (Command Prompt or PowerShell) and run:
+
+```cmd
+:: Start the AI servers (run once, keeps running in background)
+ember-llm
+
+:: Start the EmberOS daemon
+emberd
+
+:: Launch the GUI
+ember-ui
 ```
 
-**Option C: Manual Download**
+Or simply use the **Start Menu → EmberOS** shortcut!
 
-1. Download Python 3.12 from https://www.python.org/downloads/
-2. During installation, CHECK "Add Python to PATH" ✅
-3. Verify installation:
-   ```powershell
-   python --version
-   ```
+### Quick Test
+
+```cmd
+ember --help
+```
 
 ### Step 2: Install llama.cpp
 
