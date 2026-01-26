@@ -35,25 +35,24 @@ The installer creates a completely isolated environment:
 **The installer runs natively on Windows - no Python or dependencies needed!**
 
 1. Download or clone the EmberOS repository
-2. **Double-click `EmberOS-Installer.hta`** ← This is a native Windows application
+2. **Double-click `EmberOS-Setup-FIXED.hta`** ← This is the working installer!
 3. Follow the graphical wizard:
    - Click "Next" on welcome screen
    - Select which AI models to download (checkboxes)
-   - Choose options (shortcuts, auto-start, PATH)
+   - Choose options (shortcuts, PATH)
    - Click "Install" and watch progress
    - Click "Finish"
 
-**Why HTA installer?**
+**Why this installer?**
 - ✅ Runs directly on Windows (no Python needed)
 - ✅ Beautiful graphical interface
 - ✅ Real-time progress bars
-- ✅ Detailed installation logs
 - ✅ Works on all Windows 10/11 systems
-- ✅ No "This app can't run" errors
+- ✅ **Fixed all script errors!**
 
-**Alternative GUI Installer:**
-- `EmberOS-Setup.vbs` - Simple dialog-based installer (also no dependencies)
-- `EmberOS-Setup-GUI.bat` - Python-based GUI (requires Python or downloads it)
+**Alternative installers:**
+- `EmberOS-Install.bat` - Command-line installer (most reliable)
+- `EmberOS-Setup.vbs` - Simple dialog-based installer
 
 ### What the Wizard Looks Like:
 
