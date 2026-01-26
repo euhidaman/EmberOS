@@ -363,13 +363,21 @@
 
         function showPage(pageNum) {
             for (var i = 1; i <= totalPages; i++) {
-                document.getElementById('page' + i).classList.remove('active');
+                var page = document.getElementById('page' + i);
+                if (page && page.classList) {
+                    page.classList.remove('active');
+                }
             }
-            document.getElementById('page' + pageNum).classList.add('active');
+            var currentPageEl = document.getElementById('page' + pageNum);
+            if (currentPageEl && currentPageEl.classList) {
+                currentPageEl.classList.add('active');
+            }
 
             // Update buttons
             var btnBack = document.getElementById('btnBack');
             var btnNext = document.getElementById('btnNext');
+
+            if (!btnBack || !btnNext) return;
 
             if (pageNum === 1) {
                 btnBack.style.display = 'none';
