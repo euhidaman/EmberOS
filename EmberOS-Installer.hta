@@ -362,15 +362,18 @@
         var installing = false;
 
         function showPage(pageNum) {
+            // Hide all pages using className instead of classList (IE/HTA compatible)
             for (var i = 1; i <= totalPages; i++) {
                 var page = document.getElementById('page' + i);
-                if (page && page.classList) {
-                    page.classList.remove('active');
+                if (page) {
+                    page.className = 'page'; // Remove 'active' class
                 }
             }
+
+            // Show current page
             var currentPageEl = document.getElementById('page' + pageNum);
-            if (currentPageEl && currentPageEl.classList) {
-                currentPageEl.classList.add('active');
+            if (currentPageEl) {
+                currentPageEl.className = 'page active'; // Add 'active' class
             }
 
             // Update buttons

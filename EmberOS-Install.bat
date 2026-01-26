@@ -243,7 +243,11 @@ if not exist "%VENV_PIP%" (
 )
 
 echo   Upgrading pip...
-"%VENV_PYTHON%" -m pip install --upgrade pip -q 2>nul
+"%VENV_PYTHON%" -m pip install --upgrade pip --no-warn-script-location
+
+if %errorlevel% neq 0 (
+    echo   [WARNING] pip upgrade had issues, continuing anyway...
+)
 
 :: Get the script directory (where EmberOS source is)
 set "SCRIPT_DIR=%~dp0"
@@ -251,27 +255,38 @@ set "SCRIPT_DIR=%~dp0"
 :: Check if we're in the EmberOS source directory
 if exist "%SCRIPT_DIR%pyproject.toml" (
     echo   Installing EmberOS from source (this may take a few minutes)...
+    echo   Please wait, this step takes the longest...
 
     :: First install wheel and setuptools
-    "%VENV_PYTHON%" -m pip install wheel setuptools -q 2>nul
+    echo   Installing build tools...
+    "%VENV_PYTHON%" -m pip install wheel setuptools --no-warn-script-location
 
     :: Try to install with documents support
-    "%VENV_PYTHON%" -m pip install -e "%SCRIPT_DIR%[documents]" -q 2>nul
+    echo   Installing EmberOS package...
+    "%VENV_PYTHON%" -m pip install -e "%SCRIPT_DIR%[documents]" --no-warn-script-location
 
     if %errorlevel% neq 0 (
-        echo   [WARNING] Some optional dependencies may not have installed
-        echo   Trying basic installation...
-        "%VENV_PYTHON%" -m pip install -e "%SCRIPT_DIR%" -q 2>nul
+        echo   [WARNING] Full installation had issues, trying basic install...
+        "%VENV_PYTHON%" -m pip install -e "%SCRIPT_DIR%" --no-warn-script-location
 
         if %errorlevel% neq 0 (
             echo   [ERROR] Failed to install EmberOS
             echo   Trying to install core dependencies individually...
 
             :: Install core dependencies manually
-            "%VENV_PYTHON%" -m pip install aiohttp pydantic pyyaml toml PyQt6 rich click aiosqlite psutil watchdog appdirs python-dateutil numpy -q
+            echo   Installing core packages...
+            "%VENV_PYTHON%" -m pip install aiohttp pydantic pyyaml toml PyQt6 rich click aiosqlite psutil watchdog appdirs python-dateutil numpy --no-warn-script-location
 
             :: Try installing again
-            "%VENV_PYTHON%" -m pip install -e "%SCRIPT_DIR%" -q
+            echo   Retrying EmberOS installation...
+            "%VENV_PYTHON%" -m pip install -e "%SCRIPT_DIR%" --no-warn-script-location
+
+            if %errorlevel% neq 0 (
+                echo   [ERROR] Installation still failed
+                echo   You may need to install dependencies manually
+                pause
+                exit /b 1
+            )
         )
     )
 ) else (
