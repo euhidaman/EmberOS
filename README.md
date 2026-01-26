@@ -56,31 +56,34 @@ git clone https://github.com/emberos/emberos
 cd emberos
 ./install.sh
 
-# 2. Install llama.cpp (for Qwen2.5-VL vision model)
+# 2. Install llama.cpp (handles both models)
 yay -S llama.cpp
 
-# 3. Setup BitNet (for fast text inference)
-cd ~/
-git clone https://github.com/microsoft/BitNet
-cd BitNet
-sudo pacman -S --needed cmake base-devel
-python setup_env.py --hf-repo microsoft/bitnet-b1.58-2B-4T -q i2_s
-sudo cp build/bin/llama-server /usr/local/bin/bitnet-server
-sudo mkdir -p /usr/local/share/ember/models/bitnet
-sudo cp models/bitnet-b1.58-2B-4T/ggml-model-i2_s.gguf /usr/local/share/ember/models/bitnet/
+# 3. That's it! The installer downloads both models automatically.
+#    If you need to download manually:
 
-# 4. Download Qwen2.5-VL vision model
+# Download BitNet (text model)
 source ~/.local/share/ember/venv/bin/activate
 pip install huggingface-hub
-huggingface-cli download unsloth/Qwen2.5-VL-7B-Instruct-GGUF Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf --local-dir /usr/local/share/ember/models --local-dir-use-symlinks False
-sudo mv /usr/local/share/ember/models/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf /usr/local/share/ember/models/qwen2.5-vl-7b-instruct-q4_k_m.gguf
+huggingface-cli download microsoft/bitnet-b1.58-2B-4T \
+  ggml-model-i2_s.gguf \
+  --local-dir /tmp/bitnet
+sudo mkdir -p /usr/local/share/ember/models/bitnet
+sudo mv /tmp/bitnet/ggml-model-i2_s.gguf /usr/local/share/ember/models/bitnet/
+
+# Download Qwen2.5-VL (vision model)
+huggingface-cli download unsloth/Qwen2.5-VL-7B-Instruct-GGUF \
+  Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf \
+  --local-dir /tmp/qwen
+sudo mv /tmp/qwen/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf \
+  /usr/local/share/ember/models/qwen2.5-vl-7b-instruct-q4_k_m.gguf
 deactivate
 
-# 5. Start services (single service manages both models)
+# 4. Start services (single service manages both models)
 systemctl --user daemon-reload
 systemctl --user enable --now ember-llm emberd
 
-# 6. Verify and launch
+# 5. Verify and launch
 systemctl --user status ember-llm emberd
 curl http://127.0.0.1:38080/health && curl http://127.0.0.1:11434/health
 ember-ui  # or: ember

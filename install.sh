@@ -312,60 +312,48 @@ fi
 echo ""
 echo -e "${BLUE}Step 11: Setting up BitNet...${NC}"
 
-BITNET_DIR="$HOME/.local/share/bitnet"
-BITNET_SERVER="/usr/local/bin/bitnet-server"
+BITNET_MODEL="$MODEL_DIR/bitnet/ggml-model-i2_s.gguf"
 
-if [ -d "../BitNet" ]; then
-    BITNET_SOURCE="$(cd ../BitNet && pwd)"
-    echo "Found BitNet source at: $BITNET_SOURCE"
+if [ ! -f "$BITNET_MODEL" ]; then
+    echo "Downloading Microsoft BitNet 2B model..."
 
-    if [ ! -f "$BITNET_SERVER" ]; then
-        echo "Building BitNet server..."
+    # Activate venv to use huggingface-cli
+    source "$VENV_DIR/bin/activate"
 
-        # Install BitNet dependencies
-        if ! command -v cmake &> /dev/null; then
-            echo "Installing cmake..."
-            sudo pacman -S --needed --noconfirm cmake
-        fi
+    # Ensure huggingface-hub is installed
+    pip install -q huggingface-hub
 
-        # Build BitNet
-        cd "$BITNET_SOURCE"
+    # Download BitNet model directly
+    sudo mkdir -p "$MODEL_DIR/bitnet"
 
-        # Run setup to download model if needed
-        if [ ! -d "models/bitnet-b1.58-2B-4T" ]; then
-            echo "Downloading Microsoft BitNet 2B model..."
-            python setup_env.py --hf-repo microsoft/bitnet-b1.58-2B-4T -q i2_s
-        fi
+    # Download to temp location first
+    TEMP_DIR=$(mktemp -d)
+    huggingface-cli download microsoft/bitnet-b1.58-2B-4T \
+        ggml-model-i2_s.gguf \
+        --local-dir "$TEMP_DIR" \
+        --local-dir-use-symlinks False
 
-        # Copy built server
-        if [ -f "build/bin/llama-server" ]; then
-            echo "Installing BitNet server..."
-            sudo cp build/bin/llama-server "$BITNET_SERVER"
-            sudo chmod +x "$BITNET_SERVER"
+    # Move to final location
+    sudo mv "$TEMP_DIR/ggml-model-i2_s.gguf" "$BITNET_MODEL"
+    sudo chown root:root "$BITNET_MODEL"
+    rm -rf "$TEMP_DIR"
 
-            # Copy model to ember directory
-            sudo mkdir -p "$MODEL_DIR/bitnet"
-            sudo cp models/bitnet-b1.58-2B-4T/ggml-model-i2_s.gguf "$MODEL_DIR/bitnet/"
+    deactivate
 
-            echo -e "${GREEN}✓ BitNet installed successfully${NC}"
-        else
-            echo -e "${YELLOW}⚠ BitNet build failed. Text-only speedup unavailable.${NC}"
-            echo "EmberOS will use the vision model for all tasks."
-        fi
+    echo -e "${GREEN}✓ BitNet model downloaded${NC}"
+else
+    echo -e "${GREEN}✓ BitNet model already present${NC}"
+fi
 
-        cd "$SCRIPT_DIR"
-    else
-        echo -e "${GREEN}✓ BitNet server already installed${NC}"
+# Check if llama-server (from llama.cpp) can be used for BitNet
+if command -v llama-server &> /dev/null; then
+    # Create symlink so both models use same server binary
+    if [ ! -f "/usr/local/bin/bitnet-server" ]; then
+        sudo ln -s "$(which llama-server)" /usr/local/bin/bitnet-server
+        echo -e "${GREEN}✓ BitNet server configured (using llama.cpp)${NC}"
     fi
 else
-    echo -e "${YELLOW}⚠ BitNet source not found at ../BitNet${NC}"
-    echo ""
-    echo "To install BitNet for faster text inference:"
-    echo "  1. Clone: git clone https://github.com/microsoft/BitNet ../BitNet"
-    echo "  2. Run: cd ../BitNet && python setup_env.py --hf-repo microsoft/bitnet-b1.58-2B-4T -q i2_s"
-    echo "  3. Re-run this installer"
-    echo ""
-    echo "EmberOS will work without BitNet (using vision model for all tasks)."
+    echo -e "${YELLOW}⚠ llama.cpp not found. Install with: yay -S llama.cpp${NC}"
 fi
 
 # Done

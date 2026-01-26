@@ -7,13 +7,13 @@
 BITNET_MODEL="/usr/local/share/ember/models/bitnet/ggml-model-i2_s.gguf"
 VISION_MODEL="/usr/local/share/ember/models/qwen2.5-vl-7b-instruct-q4_k_m.gguf"
 
-BITNET_SERVER="/usr/local/bin/bitnet-server"
-VISION_SERVER="/usr/bin/llama-server"
+# Use llama-server for both (BitNet GGUF works with standard llama.cpp)
+LLAMA_SERVER="/usr/bin/llama-server"
 
 # Start BitNet (text model) on port 38080
-if [ -f "$BITNET_MODEL" ] && [ -x "$BITNET_SERVER" ]; then
+if [ -f "$BITNET_MODEL" ] && [ -x "$LLAMA_SERVER" ]; then
     echo "Starting BitNet text model on port 38080..."
-    "$BITNET_SERVER" \
+    "$LLAMA_SERVER" \
         --model "$BITNET_MODEL" \
         --host 127.0.0.1 \
         --port 38080 \
@@ -25,14 +25,14 @@ if [ -f "$BITNET_MODEL" ] && [ -x "$BITNET_SERVER" ]; then
 
     BITNET_PID=$!
 else
-    echo "BitNet not available (model or server not found)"
+    echo "BitNet not available (model: $BITNET_MODEL, server: $LLAMA_SERVER)"
     BITNET_PID=""
 fi
 
 # Start Qwen2.5-VL (vision model) on port 11434
-if [ -f "$VISION_MODEL" ] && [ -x "$VISION_SERVER" ]; then
+if [ -f "$VISION_MODEL" ] && [ -x "$LLAMA_SERVER" ]; then
     echo "Starting Qwen2.5-VL vision model on port 11434..."
-    "$VISION_SERVER" \
+    "$LLAMA_SERVER" \
         --model "$VISION_MODEL" \
         --host 127.0.0.1 \
         --port 11434 \
@@ -43,7 +43,7 @@ if [ -f "$VISION_MODEL" ] && [ -x "$VISION_SERVER" ]; then
 
     VISION_PID=$!
 else
-    echo "Qwen2.5-VL not available (model or server not found)"
+    echo "Qwen2.5-VL not available (model: $VISION_MODEL, server: $LLAMA_SERVER)"
     VISION_PID=""
 fi
 
