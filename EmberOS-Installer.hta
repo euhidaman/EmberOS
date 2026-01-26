@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>EmberOS Installer</title>
+    <HTA:APPLICATION
+        ID="EmberOSInstaller"
+        APPLICATIONNAME="EmberOS Installer"
+        BORDER="dialog"
+        BORDERSTYLE="raised"
+        CAPTION="yes"
+        ICON=""
+        MAXIMIZEBUTTON="no"
+        MINIMIZEBUTTON="no"
+        SHOWINTASKBAR="yes"
+        SINGLEINSTANCE="yes"
+        SYSMENU="yes"
+        WINDOWSTATE="normal"
+        SCROLL="no"
+        NAVIGABLE="no"
+        CONTEXTMENU="no"
+        SELECTION="no"
+    />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a24 0%, #2a2a3a 100%);
+            color: #f0f0fa;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        .container {
+            width: 600px;
+            height: 500px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #ff6b35 0%, #ff8c5a 100%);
+            padding: 30px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .header h1 {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 5px;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 14px;
+            color: rgba(255,255,255,0.9);
+        }
+
+        .content {
+            flex: 1;
+            padding: 30px;
+            overflow-y: auto;
+        }
+
+        .page {
+            display: none;
+        }
+
+        .page.active {
+            display: block;
+            animation: fadeIn 0.3s;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .welcome-text {
+            font-size: 16px;
+            line-height: 1.6;
+            margin-bottom: 20px;
+        }
+
+        .feature-list {
+            list-style: none;
+            padding: 20px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        .feature-list li {
+            padding: 10px;
+            border-left: 3px solid #ff6b35;
+            margin-bottom: 10px;
+            background: rgba(255,255,255,0.03);
+        }
+
+        .feature-list li:before {
+            content: "✓ ";
+            color: #ff6b35;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+
+        .checkbox-group {
+            margin: 15px 0;
+            padding: 15px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 8px;
+        }
+
+        .checkbox-group label {
+            display: block;
+            padding: 10px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .checkbox-group label:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            margin-right: 10px;
+            transform: scale(1.2);
+        }
+
+        .progress-container {
+            margin: 20px 0;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #ff6b35 0%, #ff8c5a 100%);
+            width: 0%;
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        .log-area {
+            background: rgba(0,0,0,0.3);
+            border: 1px solid rgba(255,107,53,0.3);
+            border-radius: 8px;
+            padding: 15px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: 'Consolas', monospace;
+            font-size: 12px;
+            margin-top: 15px;
+        }
+
+        .log-entry {
+            padding: 3px 0;
+            color: #a0a0b0;
+        }
+
+        .log-entry.success {
+            color: #4ade80;
+        }
+
+        .log-entry.error {
+            color: #f87171;
+        }
+
+        .log-entry.info {
+            color: #60a5fa;
+        }
+
+        .footer {
+            padding: 20px 30px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #ff6b35 0%, #ff8c5a 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(255,107,53,0.4);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-secondary {
+            background: rgba(255,255,255,0.1);
+            color: #f0f0fa;
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        .info-box {
+            background: rgba(96,165,250,0.1);
+            border: 1px solid rgba(96,165,250,0.3);
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+
+        .info-box h3 {
+            color: #60a5fa;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔥 EmberOS</h1>
+            <p>AI-Native Desktop Assistant Installer v1.0.0</p>
+        </div>
+
+        <div class="content">
+            <!-- Welcome Page -->
+            <div id="page1" class="page active">
+                <div class="welcome-text">
+                    <h2 style="margin-bottom: 15px; color: #ff6b35;">Welcome to EmberOS!</h2>
+                    <p>EmberOS transforms your Windows desktop into an AI-native environment where every interaction flows through an intelligent, private AI agent.</p>
+                </div>
+
+                <ul class="feature-list">
+                    <li>Fully self-contained installation (won't affect existing software)</li>
+                    <li>Dual AI models for fast and accurate responses</li>
+                    <li>Complete document creation and reading</li>
+                    <li>File organization and search</li>
+                    <li>100% local and private - no cloud required</li>
+                </ul>
+
+                <div class="info-box">
+                    <h3>⚠️ Important</h3>
+                    <p>EmberOS installs its own Python and llama.cpp in isolated directories. It will NOT interfere with any existing Python, Ollama, or other software on your system.</p>
+                </div>
+            </div>
+
+            <!-- Options Page -->
+            <div id="page2" class="page">
+                <h2 style="margin-bottom: 20px; color: #ff6b35;">Installation Options</h2>
+
+                <div class="checkbox-group">
+                    <h3 style="margin-bottom: 15px;">AI Models</h3>
+                    <label>
+                        <input type="checkbox" id="chkVisionModel" checked>
+                        Download Qwen2.5-VL Vision Model (~5 GB)
+                        <br><span style="margin-left: 30px; font-size: 12px; color: #a0a0b0;">Required for image analysis, PDF reading, screenshots</span>
+                    </label>
+                    <label>
+                        <input type="checkbox" id="chkBitNetModel" checked>
+                        Download BitNet Text Model (~1.2 GB)
+                        <br><span style="margin-left: 30px; font-size: 12px; color: #a0a0b0;">Fast text-only model for quick responses</span>
+                    </label>
+                </div>
+
+                <div class="checkbox-group">
+                    <h3 style="margin-bottom: 15px;">Options</h3>
+                    <label>
+                        <input type="checkbox" id="chkShortcut" checked>
+                        Create Start Menu shortcut
+                    </label>
+                    <label>
+                        <input type="checkbox" id="chkPath" checked>
+                        Add EmberOS to PATH
+                    </label>
+                    <label>
+                        <input type="checkbox" id="chkAutoStart">
+                        Start LLM servers on login
+                    </label>
+                </div>
+            </div>
+
+            <!-- Installing Page -->
+            <div id="page3" class="page">
+                <h2 style="margin-bottom: 20px; color: #ff6b35;">Installing EmberOS...</h2>
+
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div id="progressFill" class="progress-fill">0%</div>
+                    </div>
+                </div>
+
+                <p id="statusText" style="margin-top: 15px; text-align: center; font-size: 14px;">Preparing installation...</p>
+
+                <div class="log-area" id="logArea"></div>
+            </div>
+
+            <!-- Complete Page -->
+            <div id="page4" class="page">
+                <h2 style="margin-bottom: 20px; color: #4ade80;">✓ Installation Complete!</h2>
+
+                <div class="welcome-text">
+                    <p style="margin-bottom: 20px;">EmberOS has been successfully installed!</p>
+                </div>
+
+                <div class="info-box">
+                    <h3>Next Steps:</h3>
+                    <ol style="margin-left: 20px; margin-top: 10px; line-height: 1.8;">
+                        <li>Open a new Command Prompt (for PATH changes)</li>
+                        <li>Run: <code style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 3px;">ember-llm</code> (to start AI servers)</li>
+                        <li>Run: <code style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 3px;">emberd</code> (to start daemon)</li>
+                        <li>Run: <code style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 3px;">ember-ui</code> (to launch GUI)</li>
+                    </ol>
+                    <p style="margin-top: 15px;">Or use <strong>Start Menu → EmberOS</strong></p>
+                </div>
+
+                <div class="checkbox-group">
+                    <label>
+                        <input type="checkbox" id="chkLaunch" checked>
+                        Launch EmberOS now
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer">
+            <button id="btnBack" class="btn btn-secondary" onclick="goBack()">← Back</button>
+            <button id="btnNext" class="btn btn-primary" onclick="goNext()">Next →</button>
+        </div>
+    </div>
+
+    <script type="text/javascript">
+        var currentPage = 1;
+        var totalPages = 4;
+        var installing = false;
+
+        function showPage(pageNum) {
+            for (var i = 1; i <= totalPages; i++) {
+                document.getElementById('page' + i).classList.remove('active');
+            }
+            document.getElementById('page' + pageNum).classList.add('active');
+
+            // Update buttons
+            var btnBack = document.getElementById('btnBack');
+            var btnNext = document.getElementById('btnNext');
+
+            if (pageNum === 1) {
+                btnBack.style.display = 'none';
+                btnNext.innerHTML = 'Next →';
+            } else if (pageNum === 2) {
+                btnBack.style.display = 'inline-block';
+                btnNext.innerHTML = 'Install';
+            } else if (pageNum === 3) {
+                btnBack.style.display = 'none';
+                btnNext.style.display = 'none';
+            } else if (pageNum === 4) {
+                btnBack.style.display = 'none';
+                btnNext.innerHTML = 'Finish';
+                btnNext.style.display = 'inline-block';
+            }
+        }
+
+        function goNext() {
+            if (currentPage === 2) {
+                // Start installation
+                startInstallation();
+            } else if (currentPage === 4) {
+                // Finish
+                if (document.getElementById('chkLaunch').checked) {
+                    launchEmberOS();
+                }
+                window.close();
+            } else {
+                currentPage++;
+                showPage(currentPage);
+            }
+        }
+
+        function goBack() {
+            if (currentPage > 1 && !installing) {
+                currentPage--;
+                showPage(currentPage);
+            }
+        }
+
+        function addLog(message, type) {
+            var logArea = document.getElementById('logArea');
+            var entry = document.createElement('div');
+            entry.className = 'log-entry ' + (type || 'info');
+            entry.innerText = message;
+            logArea.appendChild(entry);
+            logArea.scrollTop = logArea.scrollHeight;
+        }
+
+        function updateProgress(percent, status) {
+            document.getElementById('progressFill').style.width = percent + '%';
+            document.getElementById('progressFill').innerText = percent + '%';
+            document.getElementById('statusText').innerText = status;
+        }
+
+        function startInstallation() {
+            currentPage = 3;
+            showPage(3);
+            installing = true;
+
+            // Create shell object
+            var shell = new ActiveXObject("WScript.Shell");
+            var fso = new ActiveXObject("Scripting.FileSystemObject");
+
+            // Get script directory
+            var scriptPath = fso.GetParentFolderName(location.pathname.substr(1).replace(/\//g, '\\'));
+            var installerBat = scriptPath + "\\EmberOS-Install.bat";
+
+            addLog('Starting EmberOS installation...', 'info');
+            addLog('Installation directory: ' + scriptPath, 'info');
+
+            // Check if installer exists
+            if (!fso.FileExists(installerBat)) {
+                addLog('ERROR: EmberOS-Install.bat not found!', 'error');
+                addLog('Location: ' + installerBat, 'error');
+                updateProgress(0, 'Installation failed');
+                return;
+            }
+
+            updateProgress(10, 'Preparing installation...');
+            addLog('Found installer script', 'success');
+
+            // Build command with options
+            var downloadModels = document.getElementById('chkVisionModel').checked || document.getElementById('chkBitNetModel').checked;
+
+            try {
+                updateProgress(20, 'Running installer...');
+                addLog('Launching batch installer...', 'info');
+
+                // Run the installer
+                var exec = shell.Exec('cmd.exe /c "' + installerBat + '"');
+
+                // Simulate progress (actual progress is in batch window)
+                var progress = 20;
+                var interval = setInterval(function() {
+                    if (progress < 90) {
+                        progress += 5;
+                        updateProgress(progress, 'Installing EmberOS components...');
+                    }
+
+                    // Check if process is done
+                    if (exec.Status === 1) {
+                        clearInterval(interval);
+
+                        if (exec.ExitCode === 0) {
+                            updateProgress(100, 'Installation complete!');
+                            addLog('EmberOS installed successfully!', 'success');
+                            currentPage = 4;
+                            setTimeout(function() { showPage(4); }, 1000);
+                        } else {
+                            updateProgress(progress, 'Installation failed');
+                            addLog('Installation failed with code: ' + exec.ExitCode, 'error');
+                            addLog('Please check the installer window for details', 'error');
+                        }
+                        installing = false;
+                    }
+                }, 1000);
+
+            } catch (e) {
+                addLog('Error: ' + e.message, 'error');
+                updateProgress(0, 'Installation failed');
+                installing = false;
+            }
+        }
+
+        function launchEmberOS() {
+            try {
+                var shell = new ActiveXObject("WScript.Shell");
+                var emberDir = shell.ExpandEnvironmentStrings("%LOCALAPPDATA%") + "\\EmberOS";
+                shell.Run('"' + emberDir + '\\ember-ui.cmd"', 1, false);
+            } catch (e) {
+                // Ignore errors
+            }
+        }
+
+        // Initialize
+        showPage(1);
+    </script>
+</body>
+</html>
+
