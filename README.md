@@ -1,6 +1,6 @@
 # EmberOS
 
-**An AI-native layer for Arch Linux that transforms your system into an agentic OS where every interaction flows through an intelligent, private AI agent.**
+**An AI-native layer for Linux and Windows that transforms your system into an agentic OS where every interaction flows through an intelligent, private AI agent.**
 
 > **Note:** EmberOS is not an application—it is an AI-native layer of the operating system itself. Every decision is logged and explainable, and no data ever leaves your machine.
 
@@ -8,6 +8,7 @@
 
 ## 🌟 Features
 
+- **Cross-Platform** - Works on Arch Linux and Windows 10/11
 - **Dual-Model Architecture** - BitNet for fast text tasks, Qwen2.5-VL for vision (3-5x speedup)
 - **Native OS Integration** - Not an app you "run"—it's always there, like a system daemon
 - **Dual Interface Equality** - GUI and Terminal are equally powerful, connected to the same brain
@@ -42,12 +43,12 @@ EmberOS uses **two specialized models** for optimal speed:
 
 ### Prerequisites
 
-- **Arch Linux** (or Arch-based distribution)
+- **Arch Linux** (or Arch-based distribution) OR **Windows 10/11**
 - **Python 3.11+** (3.12 recommended for full features)
 - **8GB+ RAM** (16GB recommended)
 - **~10GB disk space** (for model + application files)
 
-### Installation
+### Linux Installation (Arch)
 
 ```bash
 # 1. Clone and install EmberOS
@@ -89,6 +90,25 @@ systemctl --user status ember-llm emberd
 curl http://127.0.0.1:38080/health && curl http://127.0.0.1:11434/health
 ember-ui  # or: ember
 ```
+
+### Windows Installation
+
+```powershell
+# 1. Install Python 3.11+ from https://python.org (check "Add to PATH")
+
+# 2. Install llama.cpp from https://github.com/ggerganov/llama.cpp/releases
+
+# 3. Run the installer
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+.\install_windows.ps1
+
+# 4. Start services and launch
+ember-llm   # Start LLM servers
+emberd      # Start daemon
+ember-ui    # Launch GUI
+```
+
+**See [Windows-Installation.md](Windows-Installation.md) for detailed Windows instructions.**
 
 **On Your Arch Device - Reload After Updates:**
 ```bash

@@ -18,10 +18,12 @@ from datetime import datetime
 
 from emberos.core.config import EmberConfig, ensure_directories
 from emberos.core.constants import CACHE_DIR
-from emberos.daemon.dbus_server import EmberDBusServer
 from emberos.daemon.llm_orchestrator import LLMOrchestrator
 from emberos.daemon.planner import AgentPlanner, ExecutionPlan, ToolResult
 from emberos.daemon.context_monitor import ContextMonitor
+
+# Platform detection
+IS_WINDOWS = sys.platform == 'win32'
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +44,8 @@ class EmberDaemon:
         self.config = config or EmberConfig.from_env()
 
         # Core components
-        self.dbus_server: Optional[EmberDBusServer] = None
+        self.dbus_server: Optional[Any] = None
+        self.http_server: Optional[Any] = None  # Windows HTTP server
         self.llm: Optional[LLMOrchestrator] = None
         self.planner: Optional[AgentPlanner] = None
         self.context_monitor: Optional[ContextMonitor] = None
@@ -65,14 +68,27 @@ class EmberDaemon:
         # Initialize components
         await self._init_components()
 
-        # Start D-Bus server
-        self.dbus_server = EmberDBusServer(self)
-        await self.dbus_server.start()
+        # Start IPC server based on platform
+        if IS_WINDOWS:
+            # Windows: Use HTTP REST API
+            from emberos.daemon.windows_server import WindowsHTTPServer
+            self.http_server = WindowsHTTPServer(self)
+            await self.http_server.start()
 
-        # Register context change callback
-        self.context_monitor.register_callback(
-            lambda ctx: self.dbus_server.emit_context_changed(ctx)
-        )
+            # Register context change callback (no-op on Windows for now)
+            if self.context_monitor:
+                self.context_monitor.register_callback(lambda ctx: None)
+        else:
+            # Linux: Use D-Bus
+            from emberos.daemon.dbus_server import EmberDBusServer
+            self.dbus_server = EmberDBusServer(self)
+            await self.dbus_server.start()
+
+            # Register context change callback
+            if self.context_monitor:
+                self.context_monitor.register_callback(
+                    lambda ctx: self.dbus_server.emit_context_changed(ctx)
+                )
 
         self._running = True
         logger.info("EmberOS daemon started successfully")
@@ -132,10 +148,19 @@ class EmberDaemon:
         if self.dbus_server:
             await self.dbus_server.stop()
 
+        if self.http_server:
+            await self.http_server.stop()
+
         # Remove PID file
         self._remove_pid_file()
 
         logger.info("EmberOS daemon stopped")
+
+    def _emit_signal(self, signal_name: str, *args):
+        """Emit a signal safely on both Windows and Linux."""
+        if self.dbus_server and hasattr(self.dbus_server, f'emit_{signal_name}'):
+            getattr(self.dbus_server, f'emit_{signal_name}')(*args)
+        # Windows HTTP server doesn't have signals - uses polling instead
 
     async def execute_plan(self, plan: ExecutionPlan) -> list[ToolResult]:
         """
@@ -154,7 +179,7 @@ class EmberDaemon:
             logger.info(f"Executing step {i+1}/{len(plan.steps)}: {step.tool}")
 
             # Emit tool started signal
-            self.dbus_server.emit_tool_started(step.tool, step.args)
+            self._emit_signal('tool_started', step.tool, step.args)
 
             start_time = datetime.now()
 
@@ -178,7 +203,7 @@ class EmberDaemon:
                 results.append(tool_result)
 
                 # Emit tool completed signal
-                self.dbus_server.emit_tool_completed(step.tool, {
+                self._emit_signal('tool_completed', step.tool, {
                     "success": True,
                     "result": result,
                     "duration_ms": duration_ms
@@ -198,7 +223,7 @@ class EmberDaemon:
                 results.append(tool_result)
 
                 # Emit tool completed signal with error
-                self.dbus_server.emit_tool_completed(step.tool, {
+                self._emit_signal('tool_completed', step.tool, {
                     "success": False,
                     "error": str(e),
                     "duration_ms": duration_ms
@@ -267,16 +292,20 @@ class EmberDaemon:
                 results
             )
 
-            self.dbus_server.interface.TaskCompleted(task_id, {
-                "success": True,
-                "response": response,
-                "results": [r.to_dict() for r in results]
-            })
+            # Emit task completed signal
+            if self.dbus_server and hasattr(self.dbus_server, 'interface'):
+                self.dbus_server.interface.TaskCompleted(task_id, {
+                    "success": True,
+                    "response": response,
+                    "results": [r.to_dict() for r in results]
+                })
 
         except Exception as e:
-            self.dbus_server.interface.TaskFailed(task_id, {
-                "error": str(e)
-            })
+            # Emit task failed signal
+            if self.dbus_server and hasattr(self.dbus_server, 'interface'):
+                self.dbus_server.interface.TaskFailed(task_id, {
+                    "error": str(e)
+                })
 
     async def cancel_task(self, task_id: str) -> None:
         """Cancel a running or pending task."""

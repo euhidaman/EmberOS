@@ -19,12 +19,18 @@ from PyQt6.QtGui import QIcon, QColor, QFont, QAction, QCloseEvent
 
 from emberos.core.config import EmberConfig, GUIConfig
 from emberos.core.constants import EMBER_ORANGE, APP_NAME
-from emberos.cli.client import EmberClient
 from emberos.gui.widgets.chat import ChatWidget
 from emberos.gui.widgets.input_deck import InputDeck
 from emberos.gui.widgets.context_ribbon import ContextRibbon
 from emberos.gui.widgets.status_ticker import StatusTicker
 from emberos.gui.widgets.title_bar import TitleBar
+
+# Platform-aware client import
+import sys
+if sys.platform == 'win32':
+    from emberos.cli.windows_client import WindowsEmberClient as EmberClient
+else:
+    from emberos.cli.client import EmberClient
 
 logger = logging.getLogger(__name__)
 

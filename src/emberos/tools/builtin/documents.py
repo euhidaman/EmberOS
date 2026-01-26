@@ -549,7 +549,7 @@ class CreateDocumentTool(BaseTool):
 
             return True
         except FileNotFoundError:
-            raise Exception("ODT creation requires 'pandoc'. Install with: sudo pacman -S pandoc")
+            raise Exception("ODT creation requires 'pandoc'. Install pandoc from https://pandoc.org/installing.html")
 
     async def _create_rtf(self, filepath: Path, content: str, title: str, author: str) -> bool:
         """Create RTF file."""
@@ -699,7 +699,7 @@ class ConvertDocumentTool(BaseTool):
             except FileNotFoundError:
                 return ToolResult(
                     success=False,
-                    error="Document conversion requires 'pandoc'. Install with: sudo pacman -S pandoc"
+                    error="Document conversion requires 'pandoc'. Install from https://pandoc.org/installing.html"
                 )
 
         except Exception as e:
