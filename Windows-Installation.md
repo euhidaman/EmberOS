@@ -5,12 +5,66 @@ This guide covers installing and running EmberOS on Windows 10/11.
 ## System Requirements
 
 - Windows 10 (version 1903+) or Windows 11
-- Python 3.11 or 3.12 (Python 3.13+ has limited compatibility)
 - 8GB RAM minimum (16GB recommended for vision model)
 - 10GB free disk space for models
-- llama.cpp (for running local LLM models)
+- Internet connection (for downloading models)
 
-## Quick Installation
+## Quick Installation (Recommended)
+
+### Option 1: Use the Installer EXE (Easiest)
+
+1. Download `EmberOS-Setup.exe` from the [Releases page](https://github.com/emberos/emberos/releases)
+2. Run the installer
+3. Follow the wizard:
+   - The installer will automatically install Python if not found
+   - The installer will automatically install llama.cpp if not found
+   - Choose which AI models to download
+   - Select installation options (shortcuts, auto-start, etc.)
+4. Click "Install" and wait for completion
+5. Launch EmberOS from the Start Menu or run `ember-ui`
+
+The installer handles everything automatically:
+- ✅ Python 3.12 installation
+- ✅ llama.cpp installation  
+- ✅ Virtual environment setup
+- ✅ AI model downloads
+- ✅ Start Menu shortcuts
+- ✅ PATH configuration
+- ✅ Auto-start setup (optional)
+
+### Option 2: Build the Installer Yourself
+
+If you want to build the installer from source:
+
+```powershell
+# Clone the repository
+git clone https://github.com/emberos/emberos
+cd emberos
+
+# Install PyInstaller
+pip install pyinstaller PyQt6
+
+# Build the installer
+python installer/build_installer.py
+
+# The installer will be at: installer/dist/EmberOS-Setup.exe
+```
+
+### Option 3: PowerShell Script
+
+```powershell
+# Clone and run the PowerShell installer
+git clone https://github.com/emberos/emberos
+cd emberos
+
+# Run installer (will install Python if needed)
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+.\install_windows.ps1 -InstallPython -InstallLlamaCpp
+```
+
+## Manual Installation
+
+If you prefer manual control, follow these steps:
 
 ### Step 1: Install Python
 
@@ -44,7 +98,12 @@ Our installer can download and install Python for you:
 
 ### Step 2: Install llama.cpp
 
-Option A: Download Pre-built (Recommended)
+**Option A: Using the Installer Script**
+```powershell
+.\install_windows.ps1 -InstallLlamaCpp
+```
+
+**Option B: Download Pre-built**
 1. Go to https://github.com/ggerganov/llama.cpp/releases
 2. Download the latest Windows release (e.g., `llama-bXXXX-bin-win-avx2-x64.zip`)
 3. Extract to `C:\llama.cpp\`
@@ -53,7 +112,7 @@ Option A: Download Pre-built (Recommended)
    [Environment]::SetEnvironmentVariable("PATH", "$env:PATH;C:\llama.cpp", "User")
    ```
 
-Option B: Use Winget
+**Option C: Use Winget**
 ```powershell
 winget install llama.cpp
 ```
@@ -89,9 +148,9 @@ emberd
 ember-ui
 ```
 
-## Manual Installation
+## Advanced: Manual Installation Without Scripts
 
-If the automated installer doesn't work, follow these steps:
+If you prefer complete manual control:
 
 ### 1. Create Virtual Environment
 
