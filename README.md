@@ -92,9 +92,16 @@ ember-ui  # or: ember
 
 **On Your Arch Device - Reload After Updates:**
 ```bash
-cd ~/EmberOS && git pull
-systemctl --user restart ember-llm emberd
+cd ~/EmberOS
+git pull
+./install.sh    # Automatically detects existing install and reloads everything
 ```
+
+**That's it!** The installer will:
+- Update Python packages
+- Reinstall systemd services and scripts
+- Restart all services automatically
+- Test connections and show status
 
 ---
 
