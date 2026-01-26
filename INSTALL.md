@@ -154,6 +154,42 @@ sudo chown $USER:$USER /usr/local/share/ember/models
 
 ---
 
+## Step 4.5: Install Document Processing Tools (Optional)
+
+For comprehensive document handling (PDF, DOCX, images, etc.), install these additional tools:
+
+### System-Level Tools (via pacman):
+
+```bash
+# Document conversion and processing
+sudo pacman -S pandoc poppler tesseract tesseract-data-eng
+
+# Optional: LibreOffice for advanced conversions
+sudo pacman -S libreoffice-fresh
+```
+
+### Python Libraries (via pip in venv):
+
+Install document processing dependencies using the optional dependencies:
+
+```bash
+source ~/.local/share/ember/venv/bin/activate
+pip install -e .[documents]
+deactivate
+```
+
+**This enables:**
+- ✅ **Read**: PDF, DOCX, ODT, RTF, XLSX, ODS, PPTX, ODP, EPUB, images (with OCR)
+- ✅ **Create**: PDF, DOCX, HTML, Markdown, TXT, RTF, LaTeX, XML
+- ✅ **Convert**: Between any supported formats via pandoc
+- ✅ **OCR**: Extract text from scanned PDFs and images
+
+**Without document tools:**
+- ✅ Basic text files (TXT, MD, JSON, CSV) still work
+- ❌ Advanced formats require manual installation
+
+---
+
 ## Step 5: Download the LLM Model (Manual Download Required)
 
 > ⚠️ **IMPORTANT:** EmberOS does NOT automatically download the model. You must do this manually.
@@ -670,6 +706,4 @@ The User Guide covers:
 - **Documentation:** https://docs.emberos.org
 - **Issues:** https://github.com/emberos/emberos/issues
 - **Discussions:** https://github.com/emberos/emberos/discussions
-
-
 

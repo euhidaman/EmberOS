@@ -227,112 +227,110 @@ class EmberMainWindow(QMainWindow):
         # Show typing indicator
         self.chat_widget.show_typing_indicator()
 
-        # Process command asynchronously using QTimer
-        # This avoids the "no running event loop" error
-        QTimer.singleShot(0, lambda: self._schedule_command(message))
+        # Process command using thread to avoid blocking GUI
+        import threading
+        thread = threading.Thread(target=self._run_command_in_thread, args=(message,))
+        thread.daemon = True
+        thread.start()
 
-    def _schedule_command(self, message: str) -> None:
-        """Schedule command processing."""
-        # Get the event loop from the application
+    def _run_command_in_thread(self, message: str) -> None:
+        """Run command processing in a separate thread."""
+        # Create a new event loop for this thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            result = loop.run_until_complete(self._process_command(message))
+        finally:
+            loop.close()
 
-        # Create task
-        task = loop.create_task(self._process_command(message))
+        # Use QTimer to update GUI from main thread
+        QTimer.singleShot(0, lambda: self._handle_command_result(result))
 
-        # Store task reference to prevent garbage collection
-        if not hasattr(self, '_pending_tasks'):
-            self._pending_tasks = set()
-        self._pending_tasks.add(task)
-        task.add_done_callback(self._pending_tasks.discard)
 
-    async def _process_command(self, message: str) -> None:
-        """Process a command through the daemon."""
+    async def _process_command(self, message: str) -> dict:
+        """Process a command through the daemon. Returns result dict."""
         try:
             if not self._connected:
-                self.chat_widget.hide_typing_indicator()
-                self.chat_widget.add_agent_message(
-                    "⚠️ Not connected to EmberOS daemon.\n\n"
-                    "Please ensure the daemon is running:\n"
-                    "  systemctl --user status emberd\n\n"
-                    "Try restarting it:\n"
-                    "  systemctl --user restart emberd",
-                    is_error=True
-                )
-                return
+                return {
+                    "success": False,
+                    "error_type": "not_connected",
+                    "response": (
+                        "⚠️ Not connected to EmberOS daemon.\n\n"
+                        "Please ensure the daemon is running:\n"
+                        "  systemctl --user status emberd\n\n"
+                        "Try restarting it:\n"
+                        "  systemctl --user restart emberd"
+                    )
+                }
 
-            # Set task as running
-            self.input_deck.set_task_running(True)
-
-            # Send command to daemon
+            # Send command to daemon - now returns full result
             result = await self._client.process_command(message)
-
-            # Store task ID
             self._current_task_id = result.get("task_id")
 
-            self.chat_widget.hide_typing_indicator()
-
-            # Check if confirmation is required
-            if result.get("status") == "awaiting_confirmation":
-                confirmation_msg = result.get("plan", {}).get("confirmation_message", "Proceed with this action?")
-                risk_level = result.get("plan", {}).get("risk_level", "medium")
-
-                self.chat_widget.add_agent_message(
-                    f"⚠️ **Confirmation Required** (Risk: {risk_level})\n\n"
-                    f"{confirmation_msg}\n\n"
-                    "This action requires your confirmation. "
-                    "Please review the plan and confirm if you want to proceed."
-                )
-                self.input_deck.set_task_running(False)
-                # TODO: Add confirmation UI buttons
-                return
-
-            # Display response
-            response = result.get("response", "Task completed.")
-            self.chat_widget.add_agent_message(response)
-
-            # Update input deck state based on task status
-            self.input_deck.set_task_running(False)
-            if result.get("snapshots"):
-                self.input_deck.set_rollback_available(True)
+            return result
 
         except ConnectionError as e:
-            self.chat_widget.hide_typing_indicator()
-            self.input_deck.set_task_running(False)
-            self.chat_widget.add_agent_message(
-                f"❌ Connection Error: {e}\n\n"
-                "The daemon may not be running. Check with:\n"
-                "  systemctl --user status emberd",
-                is_error=True
-            )
+            return {
+                "success": False,
+                "error_type": "connection_error",
+                "response": (
+                    f"❌ Connection Error: {e}\n\n"
+                    "The daemon may not be running. Check with:\n"
+                    "  systemctl --user status emberd"
+                )
+            }
         except Exception as e:
-            self.chat_widget.hide_typing_indicator()
-            self.input_deck.set_task_running(False)
+            return {
+                "success": False,
+                "error_type": "error",
+                "response": f"❌ Error processing command: {e}"
+            }
+
+    def _handle_command_result(self, result: dict) -> None:
+        """Handle command result in main GUI thread."""
+        self.chat_widget.hide_typing_indicator()
+        self.input_deck.set_task_running(False)
+
+        if not result:
+            self.chat_widget.add_agent_message("❌ No response received", is_error=True)
+            return
+
+        response = result.get("response", "Task completed.")
+        is_error = not result.get("success", True) or result.get("error_type")
+
+        # Check if confirmation is required
+        if result.get("status") == "awaiting_confirmation":
+            confirmation_msg = result.get("plan", {}).get("confirmation_message", "Proceed with this action?")
+            risk_level = result.get("plan", {}).get("risk_level", "medium")
             self.chat_widget.add_agent_message(
-                f"❌ Error processing command: {e}",
-                is_error=True
+                f"⚠️ **Confirmation Required** (Risk: {risk_level})\n\n"
+                f"{confirmation_msg}\n\n"
+                "This action requires your confirmation."
             )
+            return
+
+        self.chat_widget.add_agent_message(response, is_error=is_error)
+
+        # Update rollback availability
+        if result.get("snapshots"):
+            self.input_deck.set_rollback_available(True)
+
 
     def _connect_to_daemon(self) -> None:
-        """Connect to the daemon asynchronously."""
-        QTimer.singleShot(100, lambda: self._schedule_connection())
+        """Connect to the daemon asynchronously using a thread."""
+        import threading
+        thread = threading.Thread(target=self._connect_daemon_thread)
+        thread.daemon = True
+        thread.start()
 
-    def _schedule_connection(self) -> None:
-        """Schedule daemon connection."""
+    def _connect_daemon_thread(self) -> None:
+        """Run daemon connection in a separate thread."""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        task = loop.create_task(self._connect_daemon_async())
-        if not hasattr(self, '_pending_tasks'):
-            self._pending_tasks = set()
-        self._pending_tasks.add(task)
-        task.add_done_callback(self._pending_tasks.discard)
+            loop.run_until_complete(self._connect_daemon_async())
+        finally:
+            loop.close()
 
     async def _connect_daemon_async(self) -> None:
         """Async daemon connection."""
@@ -340,37 +338,53 @@ class EmberMainWindow(QMainWindow):
             self._connected = await self._client.connect()
 
             if self._connected:
-                self.status_ticker.update_connection_status(True)
+                # Use QTimer to update GUI from main thread
+                QTimer.singleShot(0, lambda: self.status_ticker.update_connection_status(True))
                 # Setup callbacks for daemon events
                 self._client.on("progress", self._on_task_progress)
                 self._client.on("completed", self._on_task_completed)
                 self._client.on("failed", self._on_task_failed)
             else:
-                self.status_ticker.update_connection_status(False)
+                QTimer.singleShot(0, lambda: self.status_ticker.update_connection_status(False))
 
         except Exception as e:
             self._connected = False
-            self.status_ticker.update_connection_status(False)
+            QTimer.singleShot(0, lambda: self.status_ticker.update_connection_status(False))
             logger.error(f"Failed to connect to daemon: {e}")
 
     def _on_task_progress(self, update) -> None:
         """Handle task progress updates."""
         message = update.data.get("message", "Processing...")
-        self.chat_widget.add_system_message(f"⚙️ {message}")
+        # Use thread-safe way to update GUI
+        QTimer.singleShot(0, lambda: self.chat_widget.add_system_message(f"⚙️ {message}"))
 
     def _on_task_completed(self, update) -> None:
-        """Handle task completion."""
-        self.input_deck.set_task_running(False)
-        response = update.data.get("response", "Task completed.")
-        self.chat_widget.hide_typing_indicator()
-        self.chat_widget.add_agent_message(response)
+        """Handle task completion - store result for polling."""
+        task_id = update.task_id
+        if not hasattr(self, '_task_results'):
+            self._task_results = {}
+
+        self._task_results[task_id] = {
+            "success": True,
+            "response": update.data.get("response", "Task completed."),
+            "plan": update.data.get("plan"),
+            "results": update.data.get("results"),
+            "snapshots": update.data.get("snapshots"),
+            "status": "completed"
+        }
 
     def _on_task_failed(self, update) -> None:
-        """Handle task failure."""
-        self.input_deck.set_task_running(False)
-        error = update.data.get("error", "Unknown error")
-        self.chat_widget.hide_typing_indicator()
-        self.chat_widget.add_agent_message(f"❌ Task failed: {error}", is_error=True)
+        """Handle task failure - store result for polling."""
+        task_id = update.task_id
+        if not hasattr(self, '_task_results'):
+            self._task_results = {}
+
+        self._task_results[task_id] = {
+            "success": False,
+            "error_type": update.data.get("error_type", "error"),
+            "response": f"❌ Task failed: {update.data.get('error', 'Unknown error')}",
+            "status": "failed"
+        }
 
     def _on_cancel_clicked(self) -> None:
         """Handle cancel button click."""

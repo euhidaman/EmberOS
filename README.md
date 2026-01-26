@@ -38,16 +38,24 @@ cd emberos
 # 2. Run installer
 ./install.sh
 
-# 3. Download LLM model (manual step required)
+# 3. (Optional) Install document processing support
+source ~/.local/share/ember/venv/bin/activate
+pip install -e .[documents]
+deactivate
+
+# 4. (Optional) Install system tools for document processing
+sudo pacman -S pandoc poppler tesseract tesseract-data-eng
+
+# 5. Download LLM model (manual step required)
 huggingface-cli download unsloth/Qwen2.5-VL-7B-Instruct-GGUF \
   Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf \
   --local-dir /usr/local/share/ember/models
 
-# 4. Enable and start services
+# 6. Enable and start services
 systemctl --user enable --now ember-llm
 systemctl --user enable --now emberd
 
-# 5. Launch EmberOS
+# 7. Launch EmberOS
 ember-ui  # GUI
 # or
 ember     # CLI
@@ -204,6 +212,7 @@ Response: "I found your budget spreadsheet at:
 |-----------|------|-------------|
 | **CREATE** | `filesystem.write` | Create/write files with content |
 | | `filesystem.create_directory` | Create directories |
+| | `filesystem.create_spreadsheet` | Create CSV spreadsheets with templates |
 | **READ** | `filesystem.read` | Read file contents |
 | | `filesystem.search` | Search files by name/content |
 | | `filesystem.list` | List directory contents |
@@ -212,6 +221,60 @@ Response: "I found your budget spreadsheet at:
 | | `filesystem.copy` | Copy files/directories |
 | | `filesystem.organize` | Organize files by type |
 | **DELETE** | `filesystem.delete` | Delete files (with confirmation + snapshot) |
+
+### Document Operations
+
+| Operation | Tool | Description |
+|-----------|------|-------------|
+| **CREATE** | `documents.create` | Create documents: PDF, DOCX, TXT, MD, HTML, RTF, LaTeX, XML |
+| **READ** | `documents.read` | Read and extract text from PDFs, DOCX, ODT, XLSX, PPTX, images (OCR) |
+| **CONVERT** | `documents.convert` | Convert between formats (e.g., MD→PDF, DOCX→HTML) |
+
+**Supported Formats:**
+- **Read**: PDF, DOCX, DOC, ODT, RTF, XLSX, XLS, ODS, CSV, PPTX, PPT, ODP, EPUB, TXT, MD, HTML, XML, JPG, PNG, TIFF (with OCR)
+- **Create**: PDF, DOCX, TXT, MD, HTML, RTF, ODT, LaTeX, XML
+- **OCR**: Extract text from scanned PDFs and images using Tesseract
+
+**Document Processing Requirements:**
+
+For full document processing capabilities, install system tools and Python dependencies:
+
+```bash
+# System tools (required for document features)
+sudo pacman -S pandoc poppler tesseract tesseract-data-eng
+
+# Optional: LibreOffice for advanced format conversions
+sudo pacman -S libreoffice-fresh
+
+# Python libraries (install with optional dependencies)
+pip install -e .[documents]
+```
+
+**Without document tools installed:**
+- ✅ Basic text files (TXT, MD, JSON, CSV) work normally
+- ✅ Can still create HTML, XML, TXT, MD
+- ❌ Cannot read PDFs, DOCX, or other binary formats
+- ❌ Cannot create PDFs or DOCX
+- ❌ No OCR capabilities for images
+
+**Document Creation Examples:**
+
+```bash
+# Create a PDF report
+ember> Create a PDF report called Q4_Report.pdf with quarterly sales summary
+
+# Read and analyze a document
+ember> Read budget_2025.pdf and summarize the key points
+
+# Convert between formats
+ember> Convert my README.md file to a professional PDF
+
+# Extract text from scanned documents (OCR)
+ember> Read the scanned invoice.pdf and tell me the total amount
+
+# Create a Word document
+ember> Create a DOCX file called Meeting_Notes.docx with today's meeting notes
+```
 
 ### CRUD Operations - Notes
 

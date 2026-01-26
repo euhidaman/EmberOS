@@ -85,30 +85,26 @@ class EmberAgentInterface(ServiceInterface):
     @method()
     async def ProcessCommand(self, message: 's') -> 's':
         """
-        Process a natural language command.
+        Process a natural language command and wait for completion.
 
         Args:
             message: Natural language command from user
 
         Returns:
-            JSON response with task_id and initial status
+            JSON response with full result
         """
         task_id = self._generate_task_id()
         self._current_task_id = task_id
 
         logger.info(f"Processing command: {message[:100]}...")
 
-        # Start processing in background
-        asyncio.create_task(self._process_command_async(task_id, message))
+        # Process command and wait for result
+        result = await self._process_command_and_wait(task_id, message)
 
-        return json.dumps({
-            "task_id": task_id,
-            "status": "processing",
-            "message": "Command received, processing..."
-        })
+        return json.dumps(result)
 
-    async def _process_command_async(self, task_id: str, message: str) -> None:
-        """Process command asynchronously."""
+    async def _process_command_and_wait(self, task_id: str, message: str) -> dict:
+        """Process command and return complete result."""
         start_time = datetime.now()
 
         try:
@@ -130,7 +126,12 @@ class EmberAgentInterface(ServiceInterface):
                         "message": plan.confirmation_message
                     })
                 )
-                return
+                return {
+                    "task_id": task_id,
+                    "status": "awaiting_confirmation",
+                    "plan": plan.to_dict(),
+                    "message": plan.confirmation_message
+                }
 
             # Execute plan
             self.TaskProgress(task_id, "executing", "Executing plan...")
@@ -145,23 +146,41 @@ class EmberAgentInterface(ServiceInterface):
 
             duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
 
-            self.TaskCompleted(task_id, json.dumps({
+            result = {
+                "task_id": task_id,
                 "success": True,
+                "status": "completed",
                 "response": response,
                 "plan": plan.to_dict(),
                 "results": [r.to_dict() if hasattr(r, 'to_dict') else r for r in results],
                 "duration_ms": duration_ms
-            }))
+            }
+
+            # Emit completion signal
+            self.TaskCompleted(task_id, json.dumps(result))
+
+            return result
 
         except Exception as e:
             logger.exception(f"Error processing command: {e}")
             duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
 
-            self.TaskFailed(task_id, json.dumps({
+            error_result = {
+                "task_id": task_id,
+                "success": False,
+                "status": "failed",
                 "error": str(e),
                 "error_type": type(e).__name__,
                 "duration_ms": duration_ms
-            }))
+            }
+
+            self.TaskFailed(task_id, json.dumps(error_result))
+
+            return error_result
+
+    async def _process_command_async(self, task_id: str, message: str) -> None:
+        """Process command asynchronously (legacy, for signals only)."""
+        await self._process_command_and_wait(task_id, message)
 
     @method()
     async def ExecuteTool(self, tool_name: 's', params_json: 's') -> 's':

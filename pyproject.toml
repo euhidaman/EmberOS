@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "emberos"
 version = "1.0.0"
 description = "EmberOS - An AI-native layer for Arch Linux"
-readme = "README.rst"
+readme = "README.md"
 license = {text = "GPL-3.0-or-later"}
 authors = [
     {name = "EmberOS Team", email = "ember@emberos.org"}
@@ -60,6 +60,18 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Document processing support (read/create PDFs, DOCX, XLSX, etc.)
+documents = [
+    "python-docx>=0.8.11",      # DOCX creation and reading
+    "openpyxl>=3.0.10",         # Excel/XLSX reading and writing
+    "python-pptx>=0.6.21",      # PowerPoint reading
+    "reportlab>=3.6.12",        # PDF creation
+    "ebooklib>=0.18",           # EPUB reading
+    "beautifulsoup4>=4.11.1",   # HTML parsing for EPUB
+    "Pillow>=9.3.0",            # Image processing
+    "PyPDF2>=3.0.0",            # PDF manipulation
+    "markdown>=3.4.1",          # Enhanced markdown support
+]
 # Full vector search support (requires Python 3.11 or 3.12, not 3.14 yet)
 vectordb = [
     "chromadb>=0.4.22",

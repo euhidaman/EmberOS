@@ -4,10 +4,12 @@ Filesystem tools for EmberOS.
 
 from __future__ import annotations
 
-import asyncio
 import os
 import shutil
 import fnmatch
+import csv
+import json
+import base64
 from pathlib import Path
 from typing import Any, Optional
 from datetime import datetime
@@ -634,3 +636,336 @@ class FileOrganizeTool(BaseTool):
                 return category
         return None
 
+
+@register_tool
+class CreateDirectoryTool(BaseTool):
+    """Create a new directory."""
+
+    @property
+    def manifest(self) -> ToolManifest:
+        return ToolManifest(
+            name="filesystem.create_directory",
+            description="Create a new directory (and parent directories if needed)",
+            category=ToolCategory.FILESYSTEM,
+            icon="📁",
+            parameters=[
+                ToolParameter(
+                    name="path",
+                    type="string",
+                    description="Path for the new directory",
+                    required=True
+                ),
+                ToolParameter(
+                    name="parents",
+                    type="bool",
+                    description="Create parent directories if they don't exist",
+                    required=False,
+                    default=True
+                )
+            ],
+            permissions=["filesystem:write"],
+            risk_level=RiskLevel.LOW
+        )
+
+    async def execute(self, params: dict[str, Any]) -> ToolResult:
+        path = os.path.expanduser(params["path"])
+        parents = params.get("parents", True)
+
+        try:
+            directory = Path(path)
+
+            if directory.exists():
+                return ToolResult(
+                    success=True,
+                    data={
+                        "path": str(directory),
+                        "created": False,
+                        "message": "Directory already exists"
+                    }
+                )
+
+            directory.mkdir(parents=parents, exist_ok=True)
+
+            return ToolResult(
+                success=True,
+                data={
+                    "path": str(directory),
+                    "created": True,
+                    "message": f"Created directory: {path}"
+                }
+            )
+
+        except Exception as e:
+            return ToolResult(success=False, error=str(e), error_type=type(e).__name__)
+
+
+@register_tool
+class CreateSpreadsheetTool(BaseTool):
+    """Create a new spreadsheet (CSV format)."""
+
+    @property
+    def manifest(self) -> ToolManifest:
+        return ToolManifest(
+            name="filesystem.create_spreadsheet",
+            description="Create a new spreadsheet file (CSV format) with optional headers and data",
+            category=ToolCategory.FILESYSTEM,
+            icon="📊",
+            parameters=[
+                ToolParameter(
+                    name="path",
+                    type="string",
+                    description="Path for the spreadsheet file (will add .csv extension if not present)",
+                    required=True
+                ),
+                ToolParameter(
+                    name="headers",
+                    type="list",
+                    description="Column headers (e.g., ['Name', 'Date', 'Amount'])",
+                    required=False,
+                    default=[]
+                ),
+                ToolParameter(
+                    name="rows",
+                    type="list",
+                    description="Data rows (list of lists)",
+                    required=False,
+                    default=[]
+                ),
+                ToolParameter(
+                    name="template",
+                    type="string",
+                    description="Template type: 'budget', 'inventory', 'contacts', 'tasks', or 'blank'",
+                    required=False,
+                    default="blank",
+                    choices=["budget", "inventory", "contacts", "tasks", "blank"]
+                )
+            ],
+            permissions=["filesystem:write"],
+            risk_level=RiskLevel.LOW
+        )
+
+    # Predefined templates
+    TEMPLATES = {
+        "budget": {
+            "headers": ["Category", "Description", "Amount", "Date", "Type", "Notes"],
+            "rows": [
+                ["Income", "Salary", "", "", "Income", ""],
+                ["Housing", "Rent/Mortgage", "", "", "Expense", ""],
+                ["Utilities", "Electricity", "", "", "Expense", ""],
+                ["Utilities", "Water", "", "", "Expense", ""],
+                ["Food", "Groceries", "", "", "Expense", ""],
+                ["Transportation", "Gas/Fuel", "", "", "Expense", ""],
+            ]
+        },
+        "inventory": {
+            "headers": ["Item", "Category", "Quantity", "Unit Price", "Total Value", "Location", "Last Updated"],
+            "rows": []
+        },
+        "contacts": {
+            "headers": ["Name", "Email", "Phone", "Company", "Address", "Notes"],
+            "rows": []
+        },
+        "tasks": {
+            "headers": ["Task", "Priority", "Status", "Due Date", "Assigned To", "Notes"],
+            "rows": [
+                ["Example task", "Medium", "Not Started", "", "", ""],
+            ]
+        },
+        "blank": {
+            "headers": [],
+            "rows": []
+        }
+    }
+
+    async def execute(self, params: dict[str, Any]) -> ToolResult:
+        path = os.path.expanduser(params["path"])
+        headers = params.get("headers", [])
+        rows = params.get("rows", [])
+        template = params.get("template", "blank")
+
+        try:
+            # Ensure .csv extension
+            if not path.lower().endswith('.csv'):
+                path = path + '.csv'
+
+            filepath = Path(path)
+
+            # Create parent directories if needed
+            filepath.parent.mkdir(parents=True, exist_ok=True)
+
+            # Get template if specified and no custom headers/rows
+            if template != "blank" and not headers:
+                template_data = self.TEMPLATES.get(template, self.TEMPLATES["blank"])
+                headers = template_data["headers"]
+                if not rows:
+                    rows = template_data["rows"]
+
+            # Write CSV file
+            with open(filepath, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+
+                if headers:
+                    writer.writerow(headers)
+
+                for row in rows:
+                    writer.writerow(row)
+
+            return ToolResult(
+                success=True,
+                data={
+                    "path": str(filepath),
+                    "headers": headers,
+                    "row_count": len(rows),
+                    "template": template,
+                    "message": f"Created spreadsheet: {filepath.name}"
+                }
+            )
+
+        except Exception as e:
+            return ToolResult(success=False, error=str(e), error_type=type(e).__name__)
+
+
+@register_tool
+class FileCopyTool(BaseTool):
+    """Copy files or directories."""
+
+    @property
+    def manifest(self) -> ToolManifest:
+        return ToolManifest(
+            name="filesystem.copy",
+            description="Copy files or directories",
+            category=ToolCategory.FILESYSTEM,
+            icon="📋",
+            parameters=[
+                ToolParameter(
+                    name="source",
+                    type="string",
+                    description="Source path",
+                    required=True
+                ),
+                ToolParameter(
+                    name="destination",
+                    type="string",
+                    description="Destination path",
+                    required=True
+                ),
+                ToolParameter(
+                    name="overwrite",
+                    type="bool",
+                    description="Overwrite existing files",
+                    required=False,
+                    default=False
+                )
+            ],
+            permissions=["filesystem:read", "filesystem:write"],
+            risk_level=RiskLevel.LOW
+        )
+
+    async def execute(self, params: dict[str, Any]) -> ToolResult:
+        source = os.path.expanduser(params["source"])
+        destination = os.path.expanduser(params["destination"])
+        overwrite = params.get("overwrite", False)
+
+        try:
+            src_path = Path(source)
+            dst_path = Path(destination)
+
+            if not src_path.exists():
+                return ToolResult(success=False, error=f"Source not found: {source}")
+
+            if dst_path.exists() and not overwrite:
+                return ToolResult(success=False, error=f"Destination exists: {destination}")
+
+            # Create destination parent if needed
+            dst_path.parent.mkdir(parents=True, exist_ok=True)
+
+            if src_path.is_dir():
+                shutil.copytree(str(src_path), str(dst_path), dirs_exist_ok=overwrite)
+            else:
+                shutil.copy2(str(src_path), str(dst_path))
+
+            return ToolResult(
+                success=True,
+                data={
+                    "source": str(src_path),
+                    "destination": str(dst_path),
+                    "is_directory": src_path.is_dir()
+                }
+            )
+
+        except Exception as e:
+            return ToolResult(success=False, error=str(e), error_type=type(e).__name__)
+
+
+@register_tool
+class FileInfoTool(BaseTool):
+    """Get detailed information about a file or directory."""
+
+    @property
+    def manifest(self) -> ToolManifest:
+        return ToolManifest(
+            name="filesystem.info",
+            description="Get detailed information about a file or directory",
+            category=ToolCategory.FILESYSTEM,
+            icon="ℹ️",
+            parameters=[
+                ToolParameter(
+                    name="path",
+                    type="string",
+                    description="Path to the file or directory",
+                    required=True
+                )
+            ],
+            permissions=["filesystem:read"],
+            risk_level=RiskLevel.LOW
+        )
+
+    async def execute(self, params: dict[str, Any]) -> ToolResult:
+        path = os.path.expanduser(params["path"])
+
+        try:
+            target = Path(path)
+
+            if not target.exists():
+                return ToolResult(success=False, error=f"Path not found: {path}")
+
+            stat = target.stat()
+
+            info = {
+                "name": target.name,
+                "path": str(target.absolute()),
+                "exists": True,
+                "is_file": target.is_file(),
+                "is_directory": target.is_dir(),
+                "is_symlink": target.is_symlink(),
+                "size_bytes": stat.st_size,
+                "size_human": self._human_readable_size(stat.st_size),
+                "created": datetime.fromtimestamp(stat.st_ctime).isoformat(),
+                "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                "accessed": datetime.fromtimestamp(stat.st_atime).isoformat(),
+                "permissions": oct(stat.st_mode)[-3:],
+                "extension": target.suffix if target.is_file() else None,
+            }
+
+            # Add directory-specific info
+            if target.is_dir():
+                items = list(target.iterdir())
+                info["item_count"] = len(items)
+                info["file_count"] = sum(1 for i in items if i.is_file())
+                info["dir_count"] = sum(1 for i in items if i.is_dir())
+
+            return ToolResult(
+                success=True,
+                data=info
+            )
+
+        except Exception as e:
+            return ToolResult(success=False, error=str(e), error_type=type(e).__name__)
+
+    def _human_readable_size(self, size: int) -> str:
+        """Convert bytes to human readable format."""
+        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+            if size < 1024:
+                return f"{size:.1f} {unit}"
+            size /= 1024
+        return f"{size:.1f} PB"
