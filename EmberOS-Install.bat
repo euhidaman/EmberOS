@@ -290,13 +290,13 @@ if exist "%SCRIPT_DIR%pyproject.toml" (
     echo   Installing build tools...
     "%VENV_PYTHON%" -m pip install wheel setuptools --no-warn-script-location
 
-    :: Try to install with documents support
+    :: Try to install with documents support (escape brackets for batch file)
     echo   Installing EmberOS package...
-    "%VENV_PYTHON%" -m pip install -e "%SCRIPT_DIR%[documents]" --no-warn-script-location
+    "%VENV_PYTHON%" -m pip install -e "%SCRIPT_DIR%.[documents]" --no-warn-script-location
 
     if %errorlevel% neq 0 (
         echo   [WARNING] Full installation had issues, trying basic install...
-        "%VENV_PYTHON%" -m pip install -e "%SCRIPT_DIR%" --no-warn-script-location
+        "%VENV_PYTHON%" -m pip install -e "%SCRIPT_DIR%." --no-warn-script-location
 
         if %errorlevel% neq 0 (
             echo   [ERROR] Failed to install EmberOS
@@ -308,7 +308,7 @@ if exist "%SCRIPT_DIR%pyproject.toml" (
 
             :: Try installing again
             echo   Retrying EmberOS installation...
-            "%VENV_PYTHON%" -m pip install -e "%SCRIPT_DIR%" --no-warn-script-location
+            "%VENV_PYTHON%" -m pip install -e "%SCRIPT_DIR%." --no-warn-script-location
 
             if %errorlevel% neq 0 (
                 echo   [ERROR] Installation still failed
