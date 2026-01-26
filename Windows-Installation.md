@@ -14,8 +14,29 @@ This guide covers installing and running EmberOS on Windows 10/11.
 
 ### Step 1: Install Python
 
-1. Download Python 3.11 or 3.12 from https://www.python.org/downloads/
-2. During installation, CHECK "Add Python to PATH"
+**Option A: Using Winget (Recommended - Automatic)**
+
+Open PowerShell as Administrator and run:
+```powershell
+# Install Python 3.12 automatically
+winget install Python.Python.3.12
+
+# Restart your terminal after installation, then verify:
+python --version
+```
+
+**Option B: Using the Installer Script**
+
+Our installer can download and install Python for you:
+```powershell
+# Run with -InstallPython flag
+.\install_windows.ps1 -InstallPython
+```
+
+**Option C: Manual Download**
+
+1. Download Python 3.12 from https://www.python.org/downloads/
+2. During installation, CHECK "Add Python to PATH" ✅
 3. Verify installation:
    ```powershell
    python --version

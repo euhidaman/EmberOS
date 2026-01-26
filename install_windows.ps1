@@ -5,6 +5,8 @@
 param(
     [switch]$Force,
     [switch]$SkipModelDownload,
+    [switch]$InstallPython,
+    [switch]$InstallLlamaCpp,
     [string]$ModelPath = ""
 )
 
@@ -40,6 +42,101 @@ Write-Host ""
 # Check if running as Admin for certain operations
 $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
+# Function to install Python using winget
+function Install-Python {
+    Write-ColorText "Installing Python 3.12..." -Color Cyan
+
+    # Check if winget is available
+    $wingetAvailable = Get-Command "winget" -ErrorAction SilentlyContinue
+
+    if ($wingetAvailable) {
+        Write-Host "  Using winget to install Python..."
+        try {
+            winget install Python.Python.3.12 --accept-package-agreements --accept-source-agreements
+            Write-ColorText "  Python installed successfully!" -Color Green
+            Write-ColorText "  IMPORTANT: Please restart your terminal and run this script again." -Color Yellow
+            exit 0
+        } catch {
+            Write-ColorText "  winget installation failed, trying alternative method..." -Color Yellow
+        }
+    }
+
+    # Alternative: Download Python installer directly
+    Write-Host "  Downloading Python installer..."
+    $pythonUrl = "https://www.python.org/ftp/python/3.12.8/python-3.12.8-amd64.exe"
+    $installerPath = "$env:TEMP\python-installer.exe"
+
+    try {
+        Invoke-WebRequest -Uri $pythonUrl -OutFile $installerPath -UseBasicParsing
+        Write-Host "  Running Python installer..."
+        Write-Host "  IMPORTANT: Make sure to check 'Add Python to PATH' in the installer!"
+        Start-Process -FilePath $installerPath -ArgumentList "/passive", "InstallAllUsers=0", "PrependPath=1", "Include_test=0" -Wait
+        Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
+
+        Write-ColorText "  Python installation complete!" -Color Green
+        Write-ColorText "  Please restart your terminal and run this script again." -Color Yellow
+        exit 0
+    } catch {
+        Write-ColorText "ERROR: Failed to download/install Python." -Color Red
+        Write-Host "Please install Python manually from: https://www.python.org/downloads/"
+        Write-Host "Make sure to check 'Add Python to PATH' during installation."
+        exit 1
+    }
+}
+
+# Function to install llama.cpp
+function Install-LlamaCpp {
+    Write-ColorText "Installing llama.cpp..." -Color Cyan
+
+    # Check if winget is available
+    $wingetAvailable = Get-Command "winget" -ErrorAction SilentlyContinue
+
+    if ($wingetAvailable) {
+        Write-Host "  Trying winget..."
+        try {
+            winget install --id=ggerganov.llama.cpp -e --accept-package-agreements --accept-source-agreements
+            Write-ColorText "  llama.cpp installed via winget!" -Color Green
+            return $true
+        } catch {
+            Write-ColorText "  winget installation failed, downloading manually..." -Color Yellow
+        }
+    }
+
+    # Download pre-built release
+    Write-Host "  Downloading llama.cpp release..."
+    $llamaDir = "C:\llama.cpp"
+    $zipPath = "$env:TEMP\llama-cpp.zip"
+
+    # Get latest release URL (using a known stable version)
+    $llamaUrl = "https://github.com/ggerganov/llama.cpp/releases/download/b4598/llama-b4598-bin-win-avx2-x64.zip"
+
+    try {
+        Invoke-WebRequest -Uri $llamaUrl -OutFile $zipPath -UseBasicParsing
+
+        Write-Host "  Extracting to $llamaDir..."
+        if (Test-Path $llamaDir) {
+            Remove-Item -Recurse -Force $llamaDir
+        }
+        Expand-Archive -Path $zipPath -DestinationPath $llamaDir -Force
+        Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+
+        # Add to PATH
+        $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
+        if ($userPath -notlike "*$llamaDir*") {
+            [Environment]::SetEnvironmentVariable("PATH", "$llamaDir;$userPath", "User")
+            $env:PATH = "$llamaDir;$env:PATH"
+            Write-ColorText "  Added llama.cpp to PATH" -Color Green
+        }
+
+        Write-ColorText "  llama.cpp installed successfully!" -Color Green
+        return $true
+    } catch {
+        Write-ColorText "  Failed to download llama.cpp: $_" -Color Red
+        Write-Host "  Please download manually from: https://github.com/ggerganov/llama.cpp/releases"
+        return $false
+    }
+}
+
 # Step 1: Check Prerequisites
 Write-ColorText "Step 1: Checking prerequisites..." -Color Cyan
 
@@ -63,11 +160,31 @@ foreach ($cmd in @("python", "python3", "py")) {
 }
 
 if (-not $pythonCmd) {
-    Write-ColorText "ERROR: Python 3.11+ is required but not found!" -Color Red
-    Write-Host ""
-    Write-Host "Please install Python from: https://www.python.org/downloads/"
-    Write-Host "Make sure to check 'Add Python to PATH' during installation."
-    exit 1
+    Write-ColorText "  Python 3.11+ not found!" -Color Yellow
+
+    if ($InstallPython) {
+        Install-Python
+    } else {
+        Write-Host ""
+        Write-Host "Options to install Python:"
+        Write-Host "  1. Run this script with -InstallPython flag:"
+        Write-Host "     .\install_windows.ps1 -InstallPython"
+        Write-Host ""
+        Write-Host "  2. Use winget (if available):"
+        Write-Host "     winget install Python.Python.3.12"
+        Write-Host ""
+        Write-Host "  3. Download from https://www.python.org/downloads/"
+        Write-Host "     (Make sure to check 'Add Python to PATH')"
+        Write-Host ""
+
+        $response = Read-Host "Would you like to install Python now? (Y/N)"
+        if ($response -eq 'Y' -or $response -eq 'y') {
+            Install-Python
+        } else {
+            Write-ColorText "Please install Python and run this script again." -Color Yellow
+            exit 1
+        }
+    }
 }
 
 Write-ColorText "  Found Python $pythonVersion ($pythonCmd)" -Color Green
@@ -79,7 +196,19 @@ if ($llamaPath) {
     $llamaServer = $llamaPath.Source
     Write-ColorText "  Found llama-server: $llamaServer" -Color Green
 } else {
-    Write-ColorText "  llama-server not found (will check alternatives)" -Color Yellow
+    Write-ColorText "  llama-server not found" -Color Yellow
+
+    if ($InstallLlamaCpp) {
+        $llamaInstalled = Install-LlamaCpp
+        if ($llamaInstalled) {
+            $llamaPath = Get-Command "llama-server" -ErrorAction SilentlyContinue
+            if ($llamaPath) {
+                $llamaServer = $llamaPath.Source
+            }
+        }
+    } else {
+        Write-Host "  To install llama.cpp, run: .\install_windows.ps1 -InstallLlamaCpp"
+    }
 }
 
 # Check for Ollama (alternative)
