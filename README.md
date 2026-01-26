@@ -65,9 +65,10 @@ yay -S llama.cpp
 # Download BitNet (text model)
 source ~/.local/share/ember/venv/bin/activate
 pip install huggingface-hub
-huggingface-cli download microsoft/bitnet-b1.58-2B-4T \
+huggingface-cli download microsoft/bitnet-b1.58-2B-4T-gguf \
   ggml-model-i2_s.gguf \
-  --local-dir /tmp/bitnet
+  --local-dir /tmp/bitnet \
+  --local-dir-use-symlinks False
 sudo mkdir -p /usr/local/share/ember/models/bitnet
 sudo mv /tmp/bitnet/ggml-model-i2_s.gguf /usr/local/share/ember/models/bitnet/
 

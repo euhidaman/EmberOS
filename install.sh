@@ -315,7 +315,7 @@ echo -e "${BLUE}Step 11: Setting up BitNet...${NC}"
 BITNET_MODEL="$MODEL_DIR/bitnet/ggml-model-i2_s.gguf"
 
 if [ ! -f "$BITNET_MODEL" ]; then
-    echo "Downloading Microsoft BitNet 2B model..."
+    echo "Downloading Microsoft BitNet 2B GGUF model (~1.2GB)..."
 
     # Activate venv to use huggingface-cli
     source "$VENV_DIR/bin/activate"
@@ -323,12 +323,12 @@ if [ ! -f "$BITNET_MODEL" ]; then
     # Ensure huggingface-hub is installed
     pip install -q huggingface-hub
 
-    # Download BitNet model directly
+    # Download BitNet GGUF model directly
     sudo mkdir -p "$MODEL_DIR/bitnet"
 
     # Download to temp location first
     TEMP_DIR=$(mktemp -d)
-    huggingface-cli download microsoft/bitnet-b1.58-2B-4T \
+    huggingface-cli download microsoft/bitnet-b1.58-2B-4T-gguf \
         ggml-model-i2_s.gguf \
         --local-dir "$TEMP_DIR" \
         --local-dir-use-symlinks False
@@ -345,13 +345,9 @@ else
     echo -e "${GREEN}✓ BitNet model already present${NC}"
 fi
 
-# Check if llama-server (from llama.cpp) can be used for BitNet
+# Check if llama-server (from llama.cpp) is available
 if command -v llama-server &> /dev/null; then
-    # Create symlink so both models use same server binary
-    if [ ! -f "/usr/local/bin/bitnet-server" ]; then
-        sudo ln -s "$(which llama-server)" /usr/local/bin/bitnet-server
-        echo -e "${GREEN}✓ BitNet server configured (using llama.cpp)${NC}"
-    fi
+    echo -e "${GREEN}✓ llama.cpp found (will handle both models)${NC}"
 else
     echo -e "${YELLOW}⚠ llama.cpp not found. Install with: yay -S llama.cpp${NC}"
 fi
