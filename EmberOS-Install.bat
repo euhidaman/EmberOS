@@ -107,21 +107,50 @@ if exist "%PTH_FILE%" (
 )
 
 :: Download and install pip
-echo   Installing pip...
+echo   Installing pip (this may take 30-60 seconds)...
 set "GET_PIP_URL=https://bootstrap.pypa.io/get-pip.py"
 set "GET_PIP=%TEMP_DIR%\get-pip.py"
 
 powershell -Command "& {[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%GET_PIP_URL%' -OutFile '%GET_PIP%' -UseBasicParsing}"
 
 if exist "%GET_PIP%" (
-    "%EMBER_PYTHON%" "%GET_PIP%" --no-warn-script-location -q
+    echo   Running pip installer...
+    "%EMBER_PYTHON%" "%GET_PIP%" --no-warn-script-location
+
+    if %errorlevel% neq 0 (
+        echo   [WARNING] pip installation had issues, trying alternative...
+        "%EMBER_PYTHON%" -m ensurepip --default-pip
+    )
+
     del "%GET_PIP%" 2>nul
+) else (
+    echo   [WARNING] Failed to download get-pip.py, trying alternative...
+    "%EMBER_PYTHON%" -m ensurepip --default-pip
 )
 
 :: Verify pip installation
+echo   Verifying pip installation...
 if not exist "%EMBER_PIP%" (
-    echo   [WARNING] pip installation may have issues, trying alternative...
-    "%EMBER_PYTHON%" -m ensurepip --default-pip 2>nul
+    echo   [WARNING] pip executable not found, trying alternative method...
+    "%EMBER_PYTHON%" -m ensurepip --default-pip
+
+    timeout /t 2 >nul
+
+    if not exist "%EMBER_PIP%" (
+        echo   [ERROR] Failed to install pip
+        echo   This might be due to network issues or Python configuration
+        echo   Please check your internet connection and try again
+        pause
+        exit /b 1
+    )
+)
+
+echo   Testing pip...
+"%EMBER_PYTHON%" -m pip --version
+if %errorlevel% neq 0 (
+    echo   [ERROR] pip is not working correctly
+    pause
+    exit /b 1
 )
 
 echo   [OK] Isolated Python 3.12 installed for EmberOS
