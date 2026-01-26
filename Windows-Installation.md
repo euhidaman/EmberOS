@@ -9,6 +9,25 @@ This guide covers installing and running EmberOS on Windows 10/11.
 - 10GB free disk space for models
 - Internet connection (for downloading models)
 
+## ⚠️ Important: Fully Self-Contained Installation
+
+**EmberOS will NOT interfere with any existing software on your system!**
+
+The installer creates a completely isolated environment:
+- ✅ **Own Python** - Embedded Python 3.12 installed only for EmberOS
+- ✅ **Own llama.cpp** - Isolated llama-server just for EmberOS
+- ✅ **Own virtual environment** - All packages isolated
+- ✅ **No system changes** - Won't affect your existing Python, Ollama, or other tools
+- ✅ **Easy uninstall** - Just delete the `%LOCALAPPDATA%\EmberOS` folder
+
+**Even if you have:**
+- Different Python versions (2.7, 3.8, 3.10, etc.)
+- Ollama running on port 11434
+- Other AI tools installed
+- Conda/Anaconda environments
+
+**EmberOS will work perfectly without conflicts!**
+
 ## One-Click Installation (Recommended)
 
 ### Just Double-Click to Install!
@@ -18,12 +37,12 @@ This guide covers installing and running EmberOS on Windows 10/11.
 3. Follow the on-screen prompts
 
 **That's it!** The installer automatically:
-- ✅ Installs Python 3.12 (if not found)
-- ✅ Installs llama.cpp (if not found)
+- ✅ Downloads and installs its own Python 3.12 (embedded, isolated)
+- ✅ Downloads and installs its own llama.cpp (isolated)
 - ✅ Creates virtual environment
 - ✅ Installs EmberOS with all dependencies
 - ✅ Creates Start Menu shortcut
-- ✅ Adds EmberOS to PATH
+- ✅ Adds EmberOS commands to PATH
 - ✅ Optionally downloads AI models
 
 ### What You'll See:

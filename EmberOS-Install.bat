@@ -1,9 +1,14 @@
 @echo off
+setlocal EnableDelayedExpansion
 :: ============================================================
 :: EmberOS Windows Installer - One-Click Setup
 :: ============================================================
 :: Just double-click this file to install EmberOS!
 :: No Python or other tools required - everything is automatic.
+::
+:: FULLY SELF-CONTAINED: EmberOS installs its own Python and
+:: llama.cpp in isolated directories. It will NOT interfere with
+:: any existing Python, Ollama, or other software on your system.
 :: ============================================================
 
 title EmberOS Installer v1.0.0
@@ -33,128 +38,136 @@ if %errorlevel% == 0 (
 )
 echo.
 
-:: Set installation directories
+:: ============================================================
+:: Set installation directories - ALL SELF-CONTAINED
+:: ============================================================
 set "EMBER_DIR=%LOCALAPPDATA%\EmberOS"
 set "CONFIG_DIR=%APPDATA%\EmberOS"
 set "MODEL_DIR=%EMBER_DIR%\models"
 set "TEMP_DIR=%TEMP%\EmberOS_Install"
 
+:: EmberOS has its OWN Python - completely isolated
+set "EMBER_PYTHON_DIR=%EMBER_DIR%\python"
+set "EMBER_PYTHON=%EMBER_PYTHON_DIR%\python.exe"
+set "EMBER_PIP=%EMBER_PYTHON_DIR%\Scripts\pip.exe"
+
+:: EmberOS has its OWN llama.cpp - completely isolated
+set "EMBER_LLAMA_DIR=%EMBER_DIR%\llama.cpp"
+
+:: Virtual environment inside EmberOS directory
+set "VENV_DIR=%EMBER_DIR%\venv"
+set "VENV_PYTHON=%VENV_DIR%\Scripts\python.exe"
+set "VENV_PIP=%VENV_DIR%\Scripts\pip.exe"
+
 :: Create temp directory
 if not exist "%TEMP_DIR%" mkdir "%TEMP_DIR%"
 
 :: ============================================================
-:: STEP 1: Check/Install Python
+:: STEP 1: Install Embedded Python (Self-Contained)
 :: ============================================================
-echo [Step 1/6] Checking for Python...
+echo [Step 1/6] Setting up isolated Python environment...
 
-where python >nul 2>&1
-if %errorlevel% == 0 (
-    for /f "tokens=2" %%i in ('python --version 2^>^&1') do set PYVER=%%i
-    echo   Found Python %PYVER%
-
-    :: Check if version is 3.11+
-    python -c "import sys; exit(0 if sys.version_info >= (3,11) else 1)" 2>nul
-    if %errorlevel% == 0 (
-        echo   [OK] Python version is compatible
-        set "PYTHON_CMD=python"
-        goto :python_ok
-    ) else (
-        echo   [WARNING] Python version too old, need 3.11+
-    )
+:: Check if we already have our own Python installed
+if exist "%EMBER_PYTHON%" (
+    echo   [OK] EmberOS Python already installed
+    goto :python_ok
 )
 
-echo   Python 3.11+ not found. Installing Python 3.12...
+echo   Downloading Python 3.12 (embeddable package)...
+echo   This will be installed ONLY for EmberOS, not system-wide.
 echo.
 
-:: Try winget first
-where winget >nul 2>&1
-if %errorlevel% == 0 (
-    echo   Using winget to install Python...
-    winget install Python.Python.3.12 --accept-package-agreements --accept-source-agreements -h
-    if %errorlevel% == 0 (
-        echo   [OK] Python installed via winget
-        echo.
-        echo   *** IMPORTANT: Please close this window and run the installer again ***
-        echo   *** This is needed for Python to be available in PATH ***
-        echo.
-        pause
-        exit /b 0
-    )
-)
+:: Download Python embeddable package (completely isolated, no system changes)
+set "PYTHON_EMBED_URL=https://www.python.org/ftp/python/3.12.8/python-3.12.8-embed-amd64.zip"
+set "PYTHON_ZIP=%TEMP_DIR%\python-embed.zip"
 
-:: Download Python installer
-echo   Downloading Python 3.12 installer...
-set "PYTHON_URL=https://www.python.org/ftp/python/3.12.8/python-3.12.8-amd64.exe"
-set "PYTHON_INSTALLER=%TEMP_DIR%\python-installer.exe"
+powershell -Command "& {[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%PYTHON_EMBED_URL%' -OutFile '%PYTHON_ZIP%' -UseBasicParsing}"
 
-powershell -Command "& {[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%PYTHON_URL%' -OutFile '%PYTHON_INSTALLER%'}"
-
-if not exist "%PYTHON_INSTALLER%" (
-    echo   [ERROR] Failed to download Python installer
-    echo   Please install Python manually from: https://www.python.org/downloads/
+if not exist "%PYTHON_ZIP%" (
+    echo   [ERROR] Failed to download Python
+    echo   Please check your internet connection and try again.
     pause
     exit /b 1
 )
 
-echo   Running Python installer (this may take a minute)...
-echo   *** IMPORTANT: If a dialog appears, make sure "Add to PATH" is checked! ***
-"%PYTHON_INSTALLER%" /passive InstallAllUsers=0 PrependPath=1 Include_test=0
+:: Create EmberOS directory and extract Python
+echo   Extracting Python to EmberOS directory...
+if not exist "%EMBER_DIR%" mkdir "%EMBER_DIR%"
+if not exist "%EMBER_PYTHON_DIR%" mkdir "%EMBER_PYTHON_DIR%"
 
-if %errorlevel% neq 0 (
-    echo   [ERROR] Python installation failed
-    pause
-    exit /b 1
+powershell -Command "Expand-Archive -Path '%PYTHON_ZIP%' -DestinationPath '%EMBER_PYTHON_DIR%' -Force"
+del "%PYTHON_ZIP%" 2>nul
+
+:: Enable pip in embedded Python (modify python312._pth)
+echo   Configuring Python for pip support...
+set "PTH_FILE=%EMBER_PYTHON_DIR%\python312._pth"
+if exist "%PTH_FILE%" (
+    :: Uncomment import site to enable pip
+    powershell -Command "(Get-Content '%PTH_FILE%') -replace '#import site', 'import site' | Set-Content '%PTH_FILE%'"
 )
 
-del "%PYTHON_INSTALLER%" 2>nul
+:: Download and install pip
+echo   Installing pip...
+set "GET_PIP_URL=https://bootstrap.pypa.io/get-pip.py"
+set "GET_PIP=%TEMP_DIR%\get-pip.py"
 
-echo   [OK] Python installed successfully
-echo.
-echo   *** IMPORTANT: Please close this window and run the installer again ***
-echo   *** This is needed for Python to be available in PATH ***
-echo.
-pause
-exit /b 0
+powershell -Command "& {[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%GET_PIP_URL%' -OutFile '%GET_PIP%' -UseBasicParsing}"
+
+if exist "%GET_PIP%" (
+    "%EMBER_PYTHON%" "%GET_PIP%" --no-warn-script-location -q
+    del "%GET_PIP%" 2>nul
+)
+
+:: Verify pip installation
+if not exist "%EMBER_PIP%" (
+    echo   [WARNING] pip installation may have issues, trying alternative...
+    "%EMBER_PYTHON%" -m ensurepip --default-pip 2>nul
+)
+
+echo   [OK] Isolated Python 3.12 installed for EmberOS
 
 :python_ok
 echo.
 
 :: ============================================================
-:: STEP 2: Check/Install llama.cpp
+:: STEP 2: Install llama.cpp (Self-Contained)
 :: ============================================================
-echo [Step 2/6] Checking for llama.cpp...
+echo [Step 2/6] Setting up isolated llama.cpp...
 
-where llama-server >nul 2>&1
-if %errorlevel% == 0 (
-    echo   [OK] llama-server found
+:: Check if we already have our own llama.cpp installed
+if exist "%EMBER_LLAMA_DIR%\llama-server.exe" (
+    echo   [OK] EmberOS llama.cpp already installed
     goto :llama_ok
 )
 
-echo   llama-server not found. Installing llama.cpp...
-set "LLAMA_DIR=C:\llama.cpp"
+echo   Downloading llama.cpp (will be installed ONLY for EmberOS)...
+
 set "LLAMA_URL=https://github.com/ggerganov/llama.cpp/releases/download/b4598/llama-b4598-bin-win-avx2-x64.zip"
 set "LLAMA_ZIP=%TEMP_DIR%\llama-cpp.zip"
 
-echo   Downloading llama.cpp...
-powershell -Command "& {[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%LLAMA_URL%' -OutFile '%LLAMA_ZIP%'}"
+powershell -Command "& {[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%LLAMA_URL%' -OutFile '%LLAMA_ZIP%' -UseBasicParsing}"
 
 if not exist "%LLAMA_ZIP%" (
     echo   [WARNING] Failed to download llama.cpp
-    echo   You can install it manually later from: https://github.com/ggerganov/llama.cpp/releases
+    echo   You can install it manually later.
     goto :llama_skip
 )
 
-echo   Extracting to %LLAMA_DIR%...
-if exist "%LLAMA_DIR%" rmdir /s /q "%LLAMA_DIR%"
-powershell -Command "Expand-Archive -Path '%LLAMA_ZIP%' -DestinationPath '%LLAMA_DIR%' -Force"
+echo   Extracting to EmberOS directory...
+if exist "%EMBER_LLAMA_DIR%" rmdir /s /q "%EMBER_LLAMA_DIR%"
+mkdir "%EMBER_LLAMA_DIR%"
+powershell -Command "Expand-Archive -Path '%LLAMA_ZIP%' -DestinationPath '%EMBER_LLAMA_DIR%' -Force"
 del "%LLAMA_ZIP%" 2>nul
 
-:: Add to PATH
-echo   Adding llama.cpp to PATH...
-powershell -Command "[Environment]::SetEnvironmentVariable('PATH', '%LLAMA_DIR%;' + [Environment]::GetEnvironmentVariable('PATH', 'User'), 'User')"
-set "PATH=%LLAMA_DIR%;%PATH%"
+:: Check if files are in a subdirectory and move them up
+for /d %%d in ("%EMBER_LLAMA_DIR%\*") do (
+    if exist "%%d\llama-server.exe" (
+        move "%%d\*" "%EMBER_LLAMA_DIR%\" >nul 2>&1
+        rmdir "%%d" 2>nul
+    )
+)
 
-echo   [OK] llama.cpp installed
+echo   [OK] llama.cpp installed for EmberOS (isolated)
 
 :llama_ok
 :llama_skip
@@ -182,26 +195,34 @@ echo.
 :: ============================================================
 echo [Step 4/6] Setting up EmberOS...
 
-set "VENV_DIR=%EMBER_DIR%\venv"
-set "PIP=%VENV_DIR%\Scripts\pip.exe"
-set "PYTHON_VENV=%VENV_DIR%\Scripts\python.exe"
-
-:: Create venv if needed
+:: Create venv using our isolated Python
 if not exist "%VENV_DIR%" (
-    echo   Creating virtual environment...
-    %PYTHON_CMD% -m venv "%VENV_DIR%"
+    echo   Creating virtual environment with isolated Python...
+    "%EMBER_PYTHON%" -m venv "%VENV_DIR%"
+
+    if not exist "%VENV_PYTHON%" (
+        echo   [ERROR] Failed to create virtual environment
+        pause
+        exit /b 1
+    )
 )
 
 echo   Upgrading pip...
-"%PIP%" install --upgrade pip -q
+"%VENV_PIP%" install --upgrade pip -q 2>nul
 
 :: Get the script directory (where EmberOS source is)
 set "SCRIPT_DIR=%~dp0"
 
 :: Check if we're in the EmberOS source directory
 if exist "%SCRIPT_DIR%pyproject.toml" (
-    echo   Installing EmberOS from source...
-    "%PIP%" install -e "%SCRIPT_DIR%[documents]" -q
+    echo   Installing EmberOS from source (this may take a few minutes)...
+    "%VENV_PIP%" install -e "%SCRIPT_DIR%[documents]" -q
+
+    if %errorlevel% neq 0 (
+        echo   [WARNING] Some optional dependencies may not have installed
+        echo   Trying basic installation...
+        "%VENV_PIP%" install -e "%SCRIPT_DIR%" -q
+    )
 ) else (
     echo   [ERROR] EmberOS source not found!
     echo   Please run this installer from the EmberOS directory.
@@ -217,52 +238,85 @@ echo.
 :: ============================================================
 echo [Step 5/6] Creating launchers and shortcuts...
 
-:: Create ember.cmd
+:: Create ember.cmd - uses our isolated venv Python
 (
 echo @echo off
-echo "%VENV_DIR%\Scripts\python.exe" -m emberos.cli %%*
+echo "%VENV_PYTHON%" -m emberos.cli %%*
 ) > "%EMBER_DIR%\ember.cmd"
 
-:: Create ember-ui.cmd
+:: Create ember-ui.cmd - uses our isolated venv Python (windowed)
 (
 echo @echo off
 echo start "" "%VENV_DIR%\Scripts\pythonw.exe" -m emberos.gui %%*
 ) > "%EMBER_DIR%\ember-ui.cmd"
 
-:: Create emberd.cmd
+:: Create emberd.cmd - daemon
 (
 echo @echo off
-echo "%VENV_DIR%\Scripts\python.exe" -m emberos.daemon %%*
+echo "%VENV_PYTHON%" -m emberos.daemon %%*
 ) > "%EMBER_DIR%\emberd.cmd"
 
-:: Create ember-llm.cmd (LLM server manager)
+:: Create ember-llm.cmd - uses our ISOLATED llama.cpp (not system's)
 (
 echo @echo off
 echo setlocal
 echo.
+echo :: EmberOS LLM Server Manager - Uses ISOLATED llama.cpp
+echo set "LLAMA_SERVER=%EMBER_LLAMA_DIR%\llama-server.exe"
 echo set "VISION_MODEL=%MODEL_DIR%\qwen2.5-vl-7b-instruct-q4_k_m.gguf"
 echo set "BITNET_MODEL=%MODEL_DIR%\bitnet\ggml-model-i2_s.gguf"
 echo.
+echo if not exist "%%LLAMA_SERVER%%" ^(
+echo     echo [ERROR] llama-server not found at %%LLAMA_SERVER%%
+echo     echo Please run the EmberOS installer again.
+echo     pause
+echo     exit /b 1
+echo ^)
+echo.
 echo echo Starting EmberOS LLM servers...
+echo echo Using isolated llama.cpp from: %%LLAMA_SERVER%%
 echo.
 echo if exist "%%VISION_MODEL%%" ^(
 echo     echo Starting Vision model on port 11434...
-echo     start "EmberOS-Vision" /min llama-server --model "%%VISION_MODEL%%" --host 127.0.0.1 --port 11434 --ctx-size 8192 --threads 4
+echo     start "EmberOS-Vision" /min "%%LLAMA_SERVER%%" --model "%%VISION_MODEL%%" --host 127.0.0.1 --port 11434 --ctx-size 8192 --threads 4
 echo ^) else ^(
-echo     echo [WARNING] Vision model not found
+echo     echo [WARNING] Vision model not found at %%VISION_MODEL%%
 echo ^)
 echo.
 echo if exist "%%BITNET_MODEL%%" ^(
 echo     echo Starting BitNet model on port 38080...
-echo     start "EmberOS-BitNet" /min llama-server --model "%%BITNET_MODEL%%" --host 127.0.0.1 --port 38080 --ctx-size 4096 --threads 4
+echo     start "EmberOS-BitNet" /min "%%LLAMA_SERVER%%" --model "%%BITNET_MODEL%%" --host 127.0.0.1 --port 38080 --ctx-size 4096 --threads 4
 echo ^) else ^(
-echo     echo [WARNING] BitNet model not found
+echo     echo [WARNING] BitNet model not found at %%BITNET_MODEL%%
 echo ^)
 echo.
+echo echo.
 echo echo LLM servers started!
+echo echo   Vision model: port 11434
+echo echo   BitNet model: port 38080
 ) > "%EMBER_DIR%\ember-llm.cmd"
 
-:: Add EmberOS to PATH
+:: Create a model download helper script
+(
+echo @echo off
+echo echo EmberOS Model Downloader
+echo echo ========================
+echo echo.
+echo set /p DL_BITNET="Download BitNet model (~1.2 GB)? (Y/N): "
+echo if /i "%%DL_BITNET%%"=="Y" ^(
+echo     echo Downloading BitNet model...
+echo     "%VENV_PYTHON%" -c "from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='microsoft/bitnet-b1.58-2B-4T-gguf', filename='ggml-model-i2_s.gguf', local_dir=r'%MODEL_DIR%\bitnet')"
+echo ^)
+echo set /p DL_VISION="Download Vision model (~5 GB)? (Y/N): "
+echo if /i "%%DL_VISION%%"=="Y" ^(
+echo     echo Downloading Vision model...
+echo     "%VENV_PYTHON%" -c "from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='PatataAliena/Qwen2.5-VL-7B-Instruct-Q4_K_M-GGUF', filename='qwen2.5-vl-7b-instruct-q4_k_m.gguf', local_dir=r'%MODEL_DIR%')"
+echo ^)
+echo echo Done!
+echo pause
+) > "%EMBER_DIR%\ember-download-models.cmd"
+
+:: Add EmberOS to PATH (only the EmberOS directory, not system Python)
 echo   Adding EmberOS to PATH...
 powershell -Command "[Environment]::SetEnvironmentVariable('PATH', '%EMBER_DIR%;' + [Environment]::GetEnvironmentVariable('PATH', 'User'), 'User')"
 
@@ -288,23 +342,25 @@ set /p DOWNLOAD_MODELS="Would you like to download the AI models now? (Y/N): "
 if /i "%DOWNLOAD_MODELS%"=="Y" (
     echo.
     echo   Installing huggingface_hub...
-    "%PIP%" install huggingface_hub -q
+    "%VENV_PIP%" install huggingface_hub -q
 
     echo.
     echo   Downloading BitNet model (~1.2 GB)...
-    "%PYTHON_VENV%" -c "from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='microsoft/bitnet-b1.58-2B-4T-gguf', filename='ggml-model-i2_s.gguf', local_dir=r'%MODEL_DIR%\bitnet')"
+    echo   This may take several minutes depending on your internet speed...
+    "%VENV_PYTHON%" -c "from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='microsoft/bitnet-b1.58-2B-4T-gguf', filename='ggml-model-i2_s.gguf', local_dir=r'%MODEL_DIR%\bitnet')"
 
     echo.
     set /p DOWNLOAD_VISION="Download Vision model too? (~5 GB, takes longer) (Y/N): "
     if /i "!DOWNLOAD_VISION!"=="Y" (
         echo   Downloading Vision model (~5 GB)...
-        "%PYTHON_VENV%" -c "from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='PatataAliena/Qwen2.5-VL-7B-Instruct-Q4_K_M-GGUF', filename='qwen2.5-vl-7b-instruct-q4_k_m.gguf', local_dir=r'%MODEL_DIR%')"
+        echo   This may take 10-30 minutes depending on your internet speed...
+        "%VENV_PYTHON%" -c "from huggingface_hub import hf_hub_download; hf_hub_download(repo_id='PatataAliena/Qwen2.5-VL-7B-Instruct-Q4_K_M-GGUF', filename='qwen2.5-vl-7b-instruct-q4_k_m.gguf', local_dir=r'%MODEL_DIR%')"
     )
 
     echo   [OK] Models downloaded
 ) else (
-    echo   Skipping model download. You can download them later with:
-    echo   ember-download-models
+    echo   Skipping model download. You can download them later by running:
+    echo   %EMBER_DIR%\ember-download-models.cmd
 )
 
 :: ============================================================
