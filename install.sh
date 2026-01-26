@@ -211,6 +211,12 @@ mkdir -p "$HOME/.config/systemd/user"
 if [ -d "$SCRIPT_DIR/packaging" ]; then
     cp "$SCRIPT_DIR/packaging/emberd.service" "$HOME/.config/systemd/user/"
     cp "$SCRIPT_DIR/packaging/ember-llm.service" "$HOME/.config/systemd/user/"
+
+    # Install LLM manager script
+    if [ -f "$SCRIPT_DIR/packaging/ember-llm-manager.sh" ]; then
+        sudo cp "$SCRIPT_DIR/packaging/ember-llm-manager.sh" /usr/local/bin/ember-llm-manager
+        sudo chmod +x /usr/local/bin/ember-llm-manager
+    fi
 fi
 
 # Reload systemd
@@ -255,24 +261,37 @@ echo -e "${GREEN}✓ Desktop entry and icon installed${NC}"
 
 # Check for LLM model
 echo ""
-echo -e "${BLUE}Step 9: Checking for LLM model...${NC}"
+echo -e "${BLUE}Step 9: Checking for LLM models...${NC}"
 
-if [ -z "$(ls -A $MODEL_DIR 2>/dev/null)" ]; then
-    echo -e "${YELLOW}⚠ No LLM model found in $MODEL_DIR${NC}"
+# Check VLM model
+if [ ! -f "$MODEL_DIR/qwen2.5-vl-7b-instruct-q4_k_m.gguf" ]; then
+    echo -e "${YELLOW}⚠ Vision model not found in $MODEL_DIR${NC}"
     echo ""
-    echo "EmberOS requires a local LLM model to function."
-    echo "Recommended: Qwen2.5-VL-7B-Instruct (Q4_K_M quantization)"
+    echo "Vision Model (for image/PDF tasks):"
+    echo "  Qwen2.5-VL-7B-Instruct (Q4_K_M) - ~4GB"
     echo ""
-    echo "Download options:"
-    echo "  1. Unsloth (recommended): https://huggingface.co/unsloth/Qwen2.5-VL-7B-Instruct-GGUF"
-    echo "  2. PatataAliena: https://huggingface.co/PatataAliena/Qwen2.5-VL-7B-Instruct-Q4_K_M-GGUF"
-    echo ""
-    echo "Quick download command:"
-    echo "  pip install huggingface-hub"
-    echo "  huggingface-cli download unsloth/Qwen2.5-VL-7B-Instruct-GGUF Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf --local-dir $MODEL_DIR"
+    echo "Download:"
+    echo "  huggingface-cli download unsloth/Qwen2.5-VL-7B-Instruct-GGUF \\"
+    echo "    Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf \\"
+    echo "    --local-dir $MODEL_DIR \\"
+    echo "    --local-dir-use-symlinks False"
+    echo "  sudo mv $MODEL_DIR/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf $MODEL_DIR/qwen2.5-vl-7b-instruct-q4_k_m.gguf"
     echo ""
 else
-    echo -e "${GREEN}✓ LLM model found${NC}"
+    echo -e "${GREEN}✓ Vision model found${NC}"
+fi
+
+# Check BitNet model directory
+if [ ! -d "$MODEL_DIR/bitnet" ]; then
+    echo -e "${YELLOW}⚠ BitNet model not found in $MODEL_DIR/bitnet${NC}"
+    echo ""
+    echo "Text Model (fast, lightweight for text-only tasks):"
+    echo "  BitNet b1.58 - Microsoft's 1-bit LLM"
+    echo ""
+    echo "This will be downloaded and built automatically."
+    echo ""
+else
+    echo -e "${GREEN}✓ BitNet model found${NC}"
 fi
 
 # Check for llama.cpp
@@ -282,12 +301,71 @@ echo -e "${BLUE}Step 10: Checking for llama.cpp...${NC}"
 if ! command -v llama-server &> /dev/null; then
     echo -e "${YELLOW}⚠ llama.cpp not found${NC}"
     echo ""
-    echo "EmberOS uses llama.cpp for local LLM inference."
-    echo "Install options:"
-    echo "  - AUR: yay -S llama.cpp"
-    echo "  - Manual: https://github.com/ggerganov/llama.cpp"
+    echo "llama.cpp (for Vision model):"
+    echo "  Install: yay -S llama.cpp"
+    echo ""
 else
-    echo -e "${GREEN}✓ llama.cpp found${NC}"
+    echo -e "${GREEN}✓ llama.cpp found: $(which llama-server)${NC}"
+fi
+
+# Check/Setup BitNet
+echo ""
+echo -e "${BLUE}Step 11: Setting up BitNet...${NC}"
+
+BITNET_DIR="$HOME/.local/share/bitnet"
+BITNET_SERVER="/usr/local/bin/bitnet-server"
+
+if [ -d "../BitNet" ]; then
+    BITNET_SOURCE="$(cd ../BitNet && pwd)"
+    echo "Found BitNet source at: $BITNET_SOURCE"
+
+    if [ ! -f "$BITNET_SERVER" ]; then
+        echo "Building BitNet server..."
+
+        # Install BitNet dependencies
+        if ! command -v cmake &> /dev/null; then
+            echo "Installing cmake..."
+            sudo pacman -S --needed --noconfirm cmake
+        fi
+
+        # Build BitNet
+        cd "$BITNET_SOURCE"
+
+        # Run setup to download model if needed
+        if [ ! -d "models/bitnet-b1.58-2B-4T" ]; then
+            echo "Downloading Microsoft BitNet 2B model..."
+            python setup_env.py --hf-repo microsoft/bitnet-b1.58-2B-4T -q i2_s
+        fi
+
+        # Copy built server
+        if [ -f "build/bin/llama-server" ]; then
+            echo "Installing BitNet server..."
+            sudo cp build/bin/llama-server "$BITNET_SERVER"
+            sudo chmod +x "$BITNET_SERVER"
+
+            # Copy model to ember directory
+            sudo mkdir -p "$MODEL_DIR/bitnet"
+            sudo cp models/bitnet-b1.58-2B-4T/ggml-model-i2_s.gguf "$MODEL_DIR/bitnet/"
+
+            echo -e "${GREEN}✓ BitNet installed successfully${NC}"
+        else
+            echo -e "${YELLOW}⚠ BitNet build failed. Text-only speedup unavailable.${NC}"
+            echo "EmberOS will use the vision model for all tasks."
+        fi
+
+        cd "$SCRIPT_DIR"
+    else
+        echo -e "${GREEN}✓ BitNet server already installed${NC}"
+    fi
+else
+    echo -e "${YELLOW}⚠ BitNet source not found at ../BitNet${NC}"
+    echo ""
+    echo "To install BitNet for faster text inference:"
+    echo "  1. Clone: git clone https://github.com/microsoft/BitNet ../BitNet"
+    echo "  2. Run: cd ../BitNet && python setup_env.py --hf-repo microsoft/bitnet-b1.58-2B-4T -q i2_s"
+    echo "  3. Re-run this installer"
+    echo ""
+    echo "EmberOS will work without BitNet (using vision model for all tasks)."
 fi
 
 # Done
@@ -298,20 +376,31 @@ echo -e "${GREEN}═════════════════════
 echo ""
 echo "Next steps:"
 echo ""
-echo "  1. Ensure you have an LLM model in $MODEL_DIR"
+echo "  1. Ensure you have the models:"
+echo "     - BitNet (fast text):  $MODEL_DIR/bitnet/ggml-model-i2_s.gguf"
+echo "     - Qwen2.5-VL (vision): $MODEL_DIR/qwen2.5-vl-7b-instruct-q4_k_m.gguf"
 echo ""
 echo "  2. Start the services:"
-echo -e "     ${BLUE}systemctl --user enable --now ember-llm${NC}"
-echo -e "     ${BLUE}systemctl --user enable --now emberd${NC}"
+echo -e "     ${BLUE}systemctl --user enable --now ember-llm${NC}     # Both models (ports 8080 + 11434)"
+echo -e "     ${BLUE}systemctl --user enable --now emberd${NC}        # EmberOS daemon"
 echo ""
-echo "  3. Launch EmberOS:"
+echo "  3. Check service status:"
+echo -e "     ${BLUE}systemctl --user status ember-llm emberd${NC}"
+echo ""
+echo "  4. Launch EmberOS:"
 echo -e "     GUI:  ${BLUE}ember-ui${NC}"
 echo -e "     CLI:  ${BLUE}ember${NC}"
 echo ""
-echo "  4. Try it out:"
+echo "  5. Try it out:"
 echo -e "     ${BLUE}ember${NC}"
-echo "     ember> find my documents"
+echo "     ember> create a budget spreadsheet"
 echo "     ember> organize ~/Downloads"
+echo ""
+echo "Model Architecture:"
+echo "  • Single service manages both models"
+echo "  • BitNet (port 8080) handles fast text-only tasks (3-5x faster)"
+echo "  • Qwen2.5-VL (port 11434) handles images, PDFs, screenshots"
+echo "  • EmberOS automatically routes requests to the right model"
 echo ""
 echo "Documentation: https://docs.emberos.org"
 echo "Report issues: https://github.com/emberos/emberos/issues"

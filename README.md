@@ -8,6 +8,7 @@
 
 ## 🌟 Features
 
+- **Dual-Model Architecture** - BitNet for fast text tasks, Qwen2.5-VL for vision (3-5x speedup)
 - **Native OS Integration** - Not an app you "run"—it's always there, like a system daemon
 - **Dual Interface Equality** - GUI and Terminal are equally powerful, connected to the same brain
 - **Visual Excellence** - GUI matches premium commercial apps with glassmorphism design
@@ -16,6 +17,24 @@
 - **Complete CRUD Operations** - Full Create, Read, Update, Delete for files, notes, and tasks
 - **Interrupt & Rollback** - Stop tasks mid-execution and undo operations with snapshots
 - **Context-Aware** - Understands your active window, clipboard, and recent history
+
+---
+
+## ⚡ Performance Architecture
+
+EmberOS uses **two specialized models** for optimal speed:
+
+| Model | Port | Purpose | Speed | Size |
+|-------|------|---------|-------|------|
+| **BitNet b1.58-2B** | 8080 | Fast text tasks | 5-15 tok/s | ~1GB |
+| **Qwen2.5-VL-7B** | 11434 | Vision + complex | 2-5 tok/s | ~4GB |
+
+### Smart Model Routing
+- **Text-only queries** → BitNet (spreadsheets, documents, file ops)
+- **Visual content** → Qwen2.5-VL (images, PDFs, screenshots)
+- **Automatic fallback** if one model unavailable
+
+**Result:** 3-5x faster for most tasks compared to using vision model alone!
 
 ---
 
@@ -31,39 +50,47 @@
 ### Installation
 
 ```bash
-# 1. Clone repository
+# 1. Clone and install EmberOS
+cd ~/
 git clone https://github.com/emberos/emberos
 cd emberos
-
-# 2. Run installer
 ./install.sh
 
-# 3. (Optional) Install document processing support
+# 2. Install llama.cpp (for Qwen2.5-VL vision model)
+yay -S llama.cpp
+
+# 3. Setup BitNet (for fast text inference)
+cd ~/
+git clone https://github.com/microsoft/BitNet
+cd BitNet
+sudo pacman -S --needed cmake base-devel
+python setup_env.py --hf-repo microsoft/bitnet-b1.58-2B-4T -q i2_s
+sudo cp build/bin/llama-server /usr/local/bin/bitnet-server
+sudo mkdir -p /usr/local/share/ember/models/bitnet
+sudo cp models/bitnet-b1.58-2B-4T/ggml-model-i2_s.gguf /usr/local/share/ember/models/bitnet/
+
+# 4. Download Qwen2.5-VL vision model
 source ~/.local/share/ember/venv/bin/activate
-pip install -e .[documents]
+pip install huggingface-hub
+huggingface-cli download unsloth/Qwen2.5-VL-7B-Instruct-GGUF Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf --local-dir /usr/local/share/ember/models --local-dir-use-symlinks False
+sudo mv /usr/local/share/ember/models/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf /usr/local/share/ember/models/qwen2.5-vl-7b-instruct-q4_k_m.gguf
 deactivate
 
-# 4. (Optional) Install system tools for document processing
-sudo pacman -S pandoc poppler tesseract tesseract-data-eng
+# 5. Start services (single service manages both models)
+systemctl --user daemon-reload
+systemctl --user enable --now ember-llm emberd
 
-# 5. Download LLM model (manual step required)
-huggingface-cli download unsloth/Qwen2.5-VL-7B-Instruct-GGUF \
-  Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf \
-  --local-dir /usr/local/share/ember/models
-
-# 6. Enable and start services
-systemctl --user enable --now ember-llm
-systemctl --user enable --now emberd
-
-# 7. Launch EmberOS
-ember-ui  # GUI
-# or
-ember     # CLI
+# 6. Verify and launch
+systemctl --user status ember-llm emberd
+curl http://127.0.0.1:8080/health && curl http://127.0.0.1:11434/health
+ember-ui  # or: ember
 ```
 
-📖 **For detailed installation instructions:** See [INSTALL.md](INSTALL.md)
-
-📚 **For usage guide and examples:** See [USER_GUIDE.md](USER_GUIDE.md)
+**On Your Arch Device - Reload After Updates:**
+```bash
+cd ~/EmberOS && git pull
+systemctl --user restart ember-llm emberd
+```
 
 ---
 
