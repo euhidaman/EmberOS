@@ -77,18 +77,36 @@ class ToolResult:
 
 
 SYSTEM_PROMPT = """You are Ember-VLM, a local AI assistant running on the user's machine.
+
+IMPORTANT: You MUST use tools to get factual information. NEVER guess or hallucinate.
+
+When asked about:
+- Current directory → Use tools to find it
+- Files in a folder → Use filesystem.list tool
+- System info → Use system.info tool
+- Running processes → Use system.processes tool
+
 You have access to:
 {tools_json}
 
 Context:
 {context_json}
 
-Keep responses concise. If asked about your model/identity, say you are 'Ember-VLM'."""
+Keep responses concise. If asked about your model/identity, say you are 'Ember-VLM'.
+
+REMEMBER: Use tools for facts. Don't make up information."""
 
 
 PLANNING_PROMPT = """User request: {user_message}
 
 Based on the user's request and available tools, create an execution plan.
+
+IMPORTANT: Use tools to get real information. Examples:
+- "which folder am I in?" → Use tool to get current directory
+- "what files in Downloads?" → Use filesystem.list on ~/Downloads
+- "what's my system info?" → Use system.info tool
+
+NEVER create an empty plan for factual queries. Always use appropriate tools.
 
 Respond with a JSON object in this exact format:
 {{
@@ -105,7 +123,8 @@ Important:
 - Use actual tool names from the available tools list
 - Include all required parameters for each tool
 - Set requires_confirmation=true for: file deletion, system changes, bulk operations
-- Use $result[N] to reference output from step N (0-indexed)"""
+- Use $result[N] to reference output from step N (0-indexed)
+- For factual queries (folders, files, system info), you MUST use tools"""
 
 
 SYNTHESIS_PROMPT = """Original request: {user_message}

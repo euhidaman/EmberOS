@@ -461,6 +461,13 @@ class DirectoryListTool(BaseTool):
                     description="Maximum recursion depth",
                     required=False,
                     default=3
+                ),
+                ToolParameter(
+                    name="max_items",
+                    type="int",
+                    description="Maximum number of items to return",
+                    required=False,
+                    default=20
                 )
             ],
             permissions=["filesystem:read"],
@@ -472,6 +479,7 @@ class DirectoryListTool(BaseTool):
         recursive = params.get("recursive", False)
         show_hidden = params.get("show_hidden", False)
         max_depth = params.get("max_depth", 3)
+        max_items = params.get("max_items", 20)
 
         try:
             directory = Path(path)
@@ -482,15 +490,27 @@ class DirectoryListTool(BaseTool):
             if not directory.is_dir():
                 return ToolResult(success=False, error=f"Not a directory: {path}")
 
-            items = self._list_dir(directory, recursive, show_hidden, max_depth, 0)
+            all_items = self._list_dir(directory, recursive, show_hidden, max_depth, 0)
+
+            # Limit items and add truncation notice
+            total_count = len(all_items)
+            items = all_items[:max_items]
+            truncated = total_count > max_items
+
+            result_data = {
+                "path": str(directory),
+                "items": items,
+                "count": len(items),
+                "total_count": total_count,
+                "truncated": truncated
+            }
+
+            if truncated:
+                result_data["message"] = f"Showing first {max_items} of {total_count} items. Set max_items parameter to see more."
 
             return ToolResult(
                 success=True,
-                data={
-                    "path": str(directory),
-                    "items": items,
-                    "count": len(items)
-                }
+                data=result_data
             )
 
         except Exception as e:

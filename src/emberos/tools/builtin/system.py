@@ -21,6 +21,46 @@ from emberos.tools.registry import register_tool
 
 
 @register_tool
+class GetWorkingDirectoryTool(BaseTool):
+    """Get the current working directory."""
+
+    @property
+    def manifest(self) -> ToolManifest:
+        return ToolManifest(
+            name="system.getcwd",
+            description="Get the current working directory where the daemon is running",
+            category=ToolCategory.SYSTEM,
+            icon="📁",
+            parameters=[],
+            permissions=[],
+            risk_level=RiskLevel.LOW
+        )
+
+    async def execute(self, params: dict[str, Any]) -> ToolResult:
+        try:
+            cwd = os.getcwd()
+            home = os.path.expanduser("~")
+
+            # Show both absolute and relative (from home) paths
+            if cwd.startswith(home):
+                relative = "~" + cwd[len(home):]
+            else:
+                relative = cwd
+
+            return ToolResult(
+                success=True,
+                data={
+                    "cwd": cwd,
+                    "display": relative,
+                    "home": home
+                }
+            )
+
+        except Exception as e:
+            return ToolResult(success=False, error=str(e), error_type=type(e).__name__)
+
+
+@register_tool
 class SystemStatusTool(BaseTool):
     """Get system status and resource usage."""
 
