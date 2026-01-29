@@ -191,6 +191,10 @@ class LLMOrchestrator:
         model_type = request.model_type
         server_url = self._get_server_url(model_type)
 
+        logger.info(f"[ORCHESTRATOR] Routing request to {model_type.value} model at {server_url}")
+        logger.debug(f"[ORCHESTRATOR] Text model connected: {self._text_connected}")
+        logger.debug(f"[ORCHESTRATOR] Vision model connected: {self._vision_connected}")
+
         # Check if model is available
         if not self._is_model_available(model_type):
             # Try fallback
@@ -215,36 +219,44 @@ class LLMOrchestrator:
             "stream": False,
         }
 
-        logger.info(f"Sending request to {server_url}/completion with payload size {len(json.dumps(payload))} bytes")
-        
+        logger.info(f"[ORCHESTRATOR] Sending request to {server_url}/completion")
+        logger.debug(f"[ORCHESTRATOR] Payload: {json.dumps(payload, indent=2)[:500]}...")
+
         try:
-            logger.debug("Starting request...")
+            logger.debug("[ORCHESTRATOR] Starting HTTP POST request...")
             async with self.session.post(
                 f"{server_url}/completion",
                 json=payload,
                 headers={"Connection": "close"}
             ) as resp:
-                logger.debug(f"Response status: {resp.status}")
+                logger.debug(f"[ORCHESTRATOR] Response status: {resp.status}")
                 if resp.status != 200:
                     error_text = await resp.text()
+                    logger.error(f"[ORCHESTRATOR] LLM server error ({resp.status}): {error_text}")
                     raise RuntimeError(f"LLM server error: {error_text}")
 
                 data = await resp.json()
-                logger.debug("Response JSON parsed")
+                logger.debug("[ORCHESTRATOR] Response JSON parsed successfully")
+                logger.debug(f"[ORCHESTRATOR] Response content length: {len(data.get('content', ''))}")
 
                 model_name = self._text_model_name if model_type == ModelType.TEXT else self._vision_model_name
-                return CompletionResponse(
+                response = CompletionResponse(
                     content=data.get("content", ""),
                     tokens_used=data.get("tokens_evaluated", 0) + data.get("tokens_predicted", 0),
                     finish_reason=data.get("stop_type", "unknown"),
                     model=model_name or "unknown"
                 )
 
+                logger.info(f"[ORCHESTRATOR] Completion successful: {response.tokens_used} tokens, model={response.model}")
+                return response
+
         except aiohttp.ClientError as e:
-            logger.error(f"Error connecting to LLM server ({model_type}): {e}")
+            logger.error(f"[ORCHESTRATOR] Network error connecting to LLM server ({model_type}): {e}")
             raise ConnectionError(f"Failed to connect to LLM server: {e}")
         except Exception as e:
-            logger.error(f"Unexpected error in complete(): {e}")
+            logger.error(f"[ORCHESTRATOR] Unexpected error in complete(): {type(e).__name__}: {e}")
+            import traceback
+            logger.debug(f"[ORCHESTRATOR] Traceback:\n{traceback.format_exc()}")
             raise e
 
     async def complete_chat(
