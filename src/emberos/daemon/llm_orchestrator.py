@@ -95,12 +95,21 @@ class LLMOrchestrator:
         timeout = aiohttp.ClientTimeout(total=self.config.timeout)
         self.session = aiohttp.ClientSession(timeout=timeout)
 
-        # Check connection to both models
-        await self._check_text_model()
-        await self._check_vision_model()
+        # Check connection to both models with retries
+        for attempt in range(3):
+            await self._check_text_model()
+            await self._check_vision_model()
+
+            if self._text_connected or self._vision_connected:
+                break
+
+            if attempt < 2:
+                logger.info(f"No LLM servers available yet, retrying in 2s... (attempt {attempt + 1}/3)")
+                await asyncio.sleep(2)
 
         if not self._text_connected and not self._vision_connected:
-            logger.error("No LLM servers available!")
+            logger.error("No LLM servers available after 3 attempts!")
+            logger.error("The daemon will continue running, but commands will fail until an LLM server starts")
         elif not self._text_connected:
             logger.warning("BitNet text model not available, will use vision model for all tasks")
         elif not self._vision_connected:
@@ -198,18 +207,42 @@ class LLMOrchestrator:
         logger.debug(f"[ORCHESTRATOR] Text model connected: {self._text_connected}")
         logger.debug(f"[ORCHESTRATOR] Vision model connected: {self._vision_connected}")
 
-        # Check if model is available
+        # If the requested model isn't connected, try to recheck (server may have started after daemon)
         if not self._is_model_available(model_type):
+            logger.warning(f"[ORCHESTRATOR] {model_type.value} model not available, rechecking...")
+            if model_type == ModelType.TEXT:
+                await self._check_text_model()
+            else:
+                await self._check_vision_model()
+
+        # Check if model is available and fallback if needed
+        if not self._is_model_available(model_type):
+            logger.warning(f"[ORCHESTRATOR] {model_type.value} model still not available after recheck")
             # Try fallback
             if model_type == ModelType.TEXT and self._vision_connected:
-                logger.info("Text model unavailable, using vision model")
+                logger.info("[ORCHESTRATOR] Falling back from text to vision model")
                 model_type = ModelType.VISION
                 server_url = self._vision_url
+            elif model_type == ModelType.TEXT and not self._vision_connected:
+                # Try to check vision model one more time before giving up
+                logger.info("[ORCHESTRATOR] Attempting to connect to vision model as fallback...")
+                await self._check_vision_model()
+                if self._vision_connected:
+                    logger.info("[ORCHESTRATOR] Vision model now available, using it")
+                    model_type = ModelType.VISION
+                    server_url = self._vision_url
+                else:
+                    logger.error(f"[ORCHESTRATOR] No fallback available - text={self._text_connected}, vision={self._vision_connected}")
+                    raise ConnectionError(f"No LLM servers available")
             elif model_type == ModelType.VISION and self._text_connected:
-                logger.warning("Vision model unavailable, cannot process visual content")
-                raise ConnectionError("Vision model not available for image processing")
+                logger.info("[ORCHESTRATOR] Falling back from vision to text model")
+                model_type = ModelType.TEXT
+                server_url = self._text_url
             else:
+                logger.error(f"[ORCHESTRATOR] No fallback available - text={self._text_connected}, vision={self._vision_connected}")
                 raise ConnectionError(f"No LLM servers available")
+
+        logger.info(f"[ORCHESTRATOR] Using {model_type.value} model at {server_url}")
 
         payload = {
             "prompt": request.prompt,
