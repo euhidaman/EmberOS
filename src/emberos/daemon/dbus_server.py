@@ -112,7 +112,7 @@ class EmberAgentInterface(ServiceInterface):
             # Get context snapshot
             logger.debug(f"[DBUS] Getting context snapshot...")
             context = await self.daemon.context_monitor.get_snapshot()
-            logger.debug(f"[DBUS] Context: active_window={context.active_window}, cwd={context.current_directory}")
+            logger.debug(f"[DBUS] Context: active_window={context.active_window}, cwd={context.working_directory}")
 
             # Emit progress
             self.TaskProgress(task_id, "planning", "Building execution plan...")

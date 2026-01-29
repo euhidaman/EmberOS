@@ -173,8 +173,11 @@ class LLMOrchestrator:
 
     def _is_model_available(self, model_type: ModelType) -> bool:
         """Check if requested model is available."""
-        # Always return True to force an attempt, as the server might be up now
-        return True
+        if model_type == ModelType.TEXT:
+            return self._text_connected
+        elif model_type == ModelType.VISION:
+            return self._vision_connected
+        return False
 
     async def complete(self, request: CompletionRequest) -> CompletionResponse:
         """
