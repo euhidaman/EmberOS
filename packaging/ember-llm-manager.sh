@@ -36,32 +36,32 @@ if [ ! -x "$LLAMA_SERVER" ]; then
     exit 1
 fi
 
-# Start BitNet (text model) on port 38080
-if [ -f "$BITNET_MODEL" ]; then
-    echo "Starting BitNet text model (port 38080)..."
-    "$LLAMA_SERVER" \
-        --model "$BITNET_MODEL" \
-        --host 127.0.0.1 \
-        --port 38080 \
-        --ctx-size 4096 \
-        --threads 4 \
-        --n-gpu-layers 0 \
-        --temp 0.1 \
-        2>&1 | while IFS= read -r line; do echo "[BitNet] $line"; done &
+# BitNet disabled - standard llama-server doesn't support 1.58-bit quantization
+# The system will use Qwen2.5-VL for all tasks (text + vision)
+# To enable BitNet, you need a custom-built llama.cpp with BitNet support
+echo "INFO: BitNet disabled (requires custom llama-server build)"
+echo "      Using Qwen2.5-VL for all tasks (text + vision)"
 
-    BITNET_PID=$!
-    echo "BitNet started (PID: $BITNET_PID)"
-    sleep 2
-
-    # Verify it's still running
-    if ! kill -0 $BITNET_PID 2>/dev/null; then
-        echo "WARNING: BitNet failed to start (check logs above for errors)"
-        echo "NOTE: Standard llama-server may not support BitNet 1.58-bit quantization"
-        BITNET_PID=""
-    fi
-else
-    echo "WARNING: BitNet model not found at $BITNET_MODEL"
-fi
+# Uncomment below if you have a BitNet-compatible llama-server
+# if [ -f "$BITNET_MODEL" ]; then
+#     echo "Starting BitNet text model (port 38080)..."
+#     "$LLAMA_SERVER" \
+#         --model "$BITNET_MODEL" \
+#         --host 127.0.0.1 \
+#         --port 38080 \
+#         --ctx-size 4096 \
+#         --threads 4 \
+#         --n-gpu-layers 0 \
+#         --temp 0.1 \
+#         2>&1 | while IFS= read -r line; do echo "[BitNet] $line"; done &
+#     BITNET_PID=$!
+#     echo "BitNet started (PID: $BITNET_PID)"
+#     sleep 2
+#     if ! kill -0 $BITNET_PID 2>/dev/null; then
+#         echo "WARNING: BitNet failed to start"
+#         BITNET_PID=""
+#     fi
+# fi
 
 # Start Qwen2.5-VL (vision model) on port 11434
 if [ -f "$VISION_MODEL" ]; then
