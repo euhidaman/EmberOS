@@ -346,75 +346,88 @@ else
 fi
 
 # Build BitNet-compatible server from Microsoft's bitnet.cpp
-echo -e "${BLUE}Building BitNet server from bitnet.cpp...${NC}"
+echo -e "${BLUE}Step 12: Building BitNet server from bitnet.cpp...${NC}"
 
 BITNET_BUILD_DIR="$EMBER_DIR/bitnet-build"
 NEED_BUILD=false
 
-# Check if bitnet-server exists
+# Check if bitnet-server exists and is valid
 if [ ! -f "/usr/local/share/ember/bin/bitnet-server" ]; then
     echo "BitNet server not found."
     NEED_BUILD=true
 else
-    # Verify if existing bitnet-server is compatible (check if it's from bitnet.cpp)
+    # Verify if existing bitnet-server is compatible
     echo "Checking existing bitnet-server compatibility..."
 
-    # Try to get version - bitnet.cpp version will work, symlinked llama.cpp might fail with BitNet model
-    if /usr/local/share/ember/bin/bitnet-server --version &> /dev/null; then
-        # Check if it's a symlink (old broken approach)
-        if [ -L "/usr/local/share/ember/bin/bitnet-server" ]; then
-            echo "Existing bitnet-server is a symlink (old method). Rebuilding..."
-            sudo rm /usr/local/share/ember/bin/bitnet-server
-            NEED_BUILD=true
-        else
-            echo -e "${GREEN}✓ BitNet server already installed and verified${NC}"
-        fi
-    else
+    # Check if it's a symlink (old broken approach)
+    if [ -L "/usr/local/share/ember/bin/bitnet-server" ]; then
+        echo "Existing bitnet-server is a symlink (old method). Rebuilding..."
+        sudo rm /usr/local/share/ember/bin/bitnet-server
+        NEED_BUILD=true
+    elif ! /usr/local/share/ember/bin/bitnet-server --version &> /dev/null; then
         echo "Existing bitnet-server not working properly. Rebuilding..."
         sudo rm -f /usr/local/share/ember/bin/bitnet-server
         NEED_BUILD=true
+    else
+        echo -e "${GREEN}✓ BitNet server already installed and verified${NC}"
     fi
 fi
 
 if [ "$NEED_BUILD" = true ]; then
-    echo "Building from Microsoft's bitnet.cpp..."
+    echo "Building BitNet from Microsoft's bitnet.cpp (this takes 10-15 minutes)..."
 
     # Check build dependencies
-    if ! command -v cmake &> /dev/null || ! command -v make &> /dev/null; then
-        echo -e "${YELLOW}Installing build dependencies...${NC}"
-        sudo pacman -S --needed --noconfirm cmake base-devel
+    MISSING_DEPS=()
+    if ! command -v cmake &> /dev/null; then
+        MISSING_DEPS+=("cmake")
+    fi
+    if ! command -v make &> /dev/null; then
+        MISSING_DEPS+=("base-devel")
     fi
 
-    # Clone Microsoft's BitNet repository (bitnet.cpp, NOT llama.cpp)
+    if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
+        echo -e "${YELLOW}Installing build dependencies: ${MISSING_DEPS[*]}${NC}"
+        sudo pacman -S --needed --noconfirm ${MISSING_DEPS[@]}
+    fi
+
+    # Clean old build
     if [ -d "$BITNET_BUILD_DIR" ]; then
         echo "Cleaning old BitNet build..."
         rm -rf "$BITNET_BUILD_DIR"
     fi
 
-    echo "Cloning Microsoft BitNet repository (bitnet.cpp) with submodules..."
+    # Clone with submodules (includes llama.cpp)
+    echo "Cloning BitNet repository with submodules..."
     git clone --recursive https://github.com/microsoft/BitNet.git "$BITNET_BUILD_DIR"
 
-    # Ensure submodules are initialized (in case --recursive didn't work)
     cd "$BITNET_BUILD_DIR"
-    git submodule update --init --recursive
 
-    # Build BitNet using bitnet.cpp
-    echo "Building BitNet server (this may take 5-10 minutes)..."
-    mkdir -p build
-    cd build
+    # Verify submodules are present
+    if [ ! -f "3rdparty/llama.cpp/CMakeLists.txt" ]; then
+        echo "Initializing submodules..."
+        git submodule update --init --recursive
+    fi
 
-    # Build with Release configuration for optimal performance
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
-    cmake --build . --config Release -j$(nproc)
+    # Activate venv and install BitNet Python dependencies
+    source "$VENV_DIR/bin/activate"
+    pip install -q -r requirements.txt
 
-    if [ -f "bin/llama-server" ]; then
+    # Setup environment and prepare model using BitNet's setup script
+    # This generates optimized kernels for the architecture
+    echo "Preparing BitNet environment (generating optimized kernels)..."
+    python setup_env.py -md "$MODEL_DIR/bitnet" -q i2_s
+
+    deactivate
+
+    # Verify the server binary was built
+    if [ -f "build/bin/llama-server" ]; then
         # Install the BitNet-compatible server
         sudo mkdir -p /usr/local/share/ember/bin
-        sudo cp bin/llama-server /usr/local/share/ember/bin/bitnet-server
+        sudo cp build/bin/llama-server /usr/local/share/ember/bin/bitnet-server
         sudo chmod +x /usr/local/share/ember/bin/bitnet-server
         echo -e "${GREEN}✓ BitNet server built and installed from bitnet.cpp${NC}"
 
-        # Verify the binary
+        # Verify it works
         if /usr/local/share/ember/bin/bitnet-server --version &> /dev/null; then
             echo -e "${GREEN}✓ BitNet server verified working${NC}"
         fi
@@ -425,10 +438,11 @@ if [ "$NEED_BUILD" = true ]; then
         echo -e "${GREEN}✓ Build files cleaned up${NC}"
     else
         echo -e "${RED}✗ BitNet build failed - llama-server binary not found${NC}"
+        echo "Check build logs for errors."
         echo "System will continue with Qwen only."
         cd "$HOME"
     fi
-fi  # End of NEED_BUILD check
+fi
 
 # Verify llama.cpp is installed for Qwen
 if ! command -v llama-server &> /dev/null; then
