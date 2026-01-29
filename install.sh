@@ -391,10 +391,12 @@ if [ "$NEED_BUILD" = true ]; then
         rm -rf "$BITNET_BUILD_DIR"
     fi
 
-    echo "Cloning Microsoft BitNet repository (bitnet.cpp)..."
-    git clone https://github.com/microsoft/BitNet.git "$BITNET_BUILD_DIR"
+    echo "Cloning Microsoft BitNet repository (bitnet.cpp) with submodules..."
+    git clone --recursive https://github.com/microsoft/BitNet.git "$BITNET_BUILD_DIR"
 
+    # Ensure submodules are initialized (in case --recursive didn't work)
     cd "$BITNET_BUILD_DIR"
+    git submodule update --init --recursive
 
     # Build BitNet using bitnet.cpp
     echo "Building BitNet server (this may take 5-10 minutes)..."
