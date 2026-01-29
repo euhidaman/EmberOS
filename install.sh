@@ -345,14 +345,20 @@ else
     echo -e "${GREEN}✓ BitNet model already present${NC}"
 fi
 
-# Check if llama-server (from llama.cpp) can be used for BitNet
-if command -v llama-server &> /dev/null; then
-    # Create symlink so both models use same server binary
-    if [ ! -f "/usr/local/bin/bitnet-server" ]; then
-        sudo ln -s "$(which llama-server)" /usr/local/bin/bitnet-server
-        echo -e "${GREEN}✓ BitNet server configured (using llama.cpp)${NC}"
-    fi
+# Install BitNet-compatible server binary
+if [ -f "$SCRIPT_DIR/bin/bitnet-server" ]; then
+    echo "Installing BitNet server binary..."
+    sudo mkdir -p /usr/local/share/ember/bin
+    sudo cp "$SCRIPT_DIR/bin/bitnet-server" /usr/local/share/ember/bin/
+    sudo chmod +x /usr/local/share/ember/bin/bitnet-server
+    echo -e "${GREEN}✓ BitNet server installed${NC}"
 else
+    echo -e "${YELLOW}⚠ BitNet server binary not found in bin/bitnet-server${NC}"
+    echo "BitNet will not be available. System will use Qwen for all tasks."
+fi
+
+# Check if standard llama-server exists for Qwen
+if ! command -v llama-server &> /dev/null; then
     echo -e "${YELLOW}⚠ llama.cpp not found. Install with: yay -S llama.cpp${NC}"
 fi
 

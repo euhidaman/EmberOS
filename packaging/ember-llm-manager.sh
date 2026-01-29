@@ -8,7 +8,12 @@ set -e
 
 BITNET_MODEL="/usr/local/share/ember/models/bitnet/ggml-model-i2_s.gguf"
 VISION_MODEL="/usr/local/share/ember/models/qwen2.5-vl-7b-instruct-q4_k_m.gguf"
-LLAMA_SERVER="/usr/bin/llama-server"
+
+# System llama-server for standard GGUF models (Qwen)
+SYSTEM_LLAMA_SERVER="/usr/bin/llama-server"
+
+# BitNet-compatible server from EmberOS bin/
+BITNET_SERVER="/usr/local/share/ember/bin/bitnet-server"
 
 BITNET_PID=""
 VISION_PID=""
@@ -29,39 +34,44 @@ cleanup() {
 
 trap cleanup SIGTERM SIGINT EXIT
 
-# Check llama-server exists
-if [ ! -x "$LLAMA_SERVER" ]; then
-    echo "ERROR: llama-server not found at $LLAMA_SERVER"
+# Check system llama-server exists
+if [ ! -x "$SYSTEM_LLAMA_SERVER" ]; then
+    echo "ERROR: System llama-server not found at $SYSTEM_LLAMA_SERVER"
     echo "Install with: yay -S llama.cpp"
     exit 1
 fi
 
-# BitNet disabled - standard llama-server doesn't support 1.58-bit quantization
-# The system will use Qwen2.5-VL for all tasks (text + vision)
-# To enable BitNet, you need a custom-built llama.cpp with BitNet support
-echo "INFO: BitNet disabled (requires custom llama-server build)"
-echo "      Using Qwen2.5-VL for all tasks (text + vision)"
+# Start BitNet (text model) on port 38080
+if [ -f "$BITNET_MODEL" ]; then
+    if [ -x "$BITNET_SERVER" ]; then
+        echo "Starting BitNet text model (port 38080)..."
+        "$BITNET_SERVER" \
+            --model "$BITNET_MODEL" \
+            --host 127.0.0.1 \
+            --port 38080 \
+            --ctx-size 4096 \
+            --threads 4 \
+            --n-gpu-layers 0 \
+            --temp 0.1 \
+            2>&1 | while IFS= read -r line; do echo "[BitNet] $line"; done &
 
-# Uncomment below if you have a BitNet-compatible llama-server
-# if [ -f "$BITNET_MODEL" ]; then
-#     echo "Starting BitNet text model (port 38080)..."
-#     "$LLAMA_SERVER" \
-#         --model "$BITNET_MODEL" \
-#         --host 127.0.0.1 \
-#         --port 38080 \
-#         --ctx-size 4096 \
-#         --threads 4 \
-#         --n-gpu-layers 0 \
-#         --temp 0.1 \
-#         2>&1 | while IFS= read -r line; do echo "[BitNet] $line"; done &
-#     BITNET_PID=$!
-#     echo "BitNet started (PID: $BITNET_PID)"
-#     sleep 2
-#     if ! kill -0 $BITNET_PID 2>/dev/null; then
-#         echo "WARNING: BitNet failed to start"
-#         BITNET_PID=""
-#     fi
-# fi
+        BITNET_PID=$!
+        echo "BitNet started (PID: $BITNET_PID)"
+        sleep 2
+
+        # Verify it's still running
+        if ! kill -0 $BITNET_PID 2>/dev/null; then
+            echo "WARNING: BitNet failed to start (check logs above)"
+            BITNET_PID=""
+        fi
+    else
+        echo "WARNING: BitNet server not found at $BITNET_SERVER"
+        echo "The bitnet-server binary should be installed by ./install.sh"
+        echo "Continuing with Qwen only..."
+    fi
+else
+    echo "WARNING: BitNet model not found at $BITNET_MODEL"
+fi
 
 # Start Qwen2.5-VL (vision model) on port 11434
 if [ -f "$VISION_MODEL" ]; then
