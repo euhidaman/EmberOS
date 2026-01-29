@@ -2,13 +2,17 @@
 #
 # EmberOS LLM Manager
 # Manages both BitNet (text) and Qwen2.5-VL (vision) models
+# BitNet uses bitnet.cpp, Qwen uses llama.cpp
 #
-
-set -e
 
 BITNET_MODEL="/usr/local/share/ember/models/bitnet/ggml-model-i2_s.gguf"
 VISION_MODEL="/usr/local/share/ember/models/qwen2.5-vl-7b-instruct-q4_k_m.gguf"
-LLAMA_SERVER="/usr/bin/llama-server"
+
+# BitNet uses bitnet.cpp server (built from Microsoft's BitNet repo)
+BITNET_SERVER="/usr/local/share/ember/bin/bitnet-server"
+
+# Qwen uses standard llama.cpp server
+SYSTEM_LLAMA_SERVER="/usr/bin/llama-server"
 
 BITNET_PID=""
 VISION_PID=""
@@ -29,17 +33,24 @@ cleanup() {
 
 trap cleanup SIGTERM SIGINT EXIT
 
-# Check llama-server exists
-if [ ! -x "$LLAMA_SERVER" ]; then
-    echo "ERROR: llama-server not found at $LLAMA_SERVER"
-    echo "Install with: yay -S llama.cpp"
-    exit 1
+# Check if bitnet-server exists (from bitnet.cpp)
+if [ ! -x "$BITNET_SERVER" ]; then
+    echo "WARNING: BitNet server not found at $BITNET_SERVER"
+    echo "Run ./install.sh to build BitNet from source"
+    BITNET_SERVER=""
 fi
 
-# Start BitNet (text model) on port 38080
-if [ -f "$BITNET_MODEL" ]; then
-    echo "Starting BitNet text model (port 38080)..."
-    "$LLAMA_SERVER" \
+# Check if llama-server exists (for Qwen)
+if [ ! -x "$SYSTEM_LLAMA_SERVER" ]; then
+    echo "WARNING: llama-server not found at $SYSTEM_LLAMA_SERVER"
+    echo "Install with: yay -S llama.cpp"
+    SYSTEM_LLAMA_SERVER=""
+fi
+
+# Start BitNet (text model) on port 38080 using bitnet.cpp server
+if [ -f "$BITNET_MODEL" ] && [ -n "$BITNET_SERVER" ] && [ -x "$BITNET_SERVER" ]; then
+    echo "Starting BitNet text model (port 38080) with bitnet.cpp..."
+    "$BITNET_SERVER" \
         --model "$BITNET_MODEL" \
         --host 127.0.0.1 \
         --port 38080 \
@@ -47,25 +58,27 @@ if [ -f "$BITNET_MODEL" ]; then
         --threads 4 \
         --n-gpu-layers 0 \
         --temp 0.1 \
-        --log-disable 2>&1 | while IFS= read -r line; do echo "[BitNet] $line"; done &
+        2>&1 | while IFS= read -r line; do echo "[BitNet] $line"; done &
 
     BITNET_PID=$!
     echo "BitNet started (PID: $BITNET_PID)"
-    sleep 1
+    sleep 2
 
     # Verify it's still running
     if ! kill -0 $BITNET_PID 2>/dev/null; then
-        echo "WARNING: BitNet failed to start"
+        echo "WARNING: BitNet failed to start (check logs above)"
         BITNET_PID=""
     fi
-else
+elif [ ! -f "$BITNET_MODEL" ]; then
     echo "WARNING: BitNet model not found at $BITNET_MODEL"
+else
+    echo "WARNING: BitNet server not available, skipping BitNet startup"
 fi
 
-# Start Qwen2.5-VL (vision model) on port 11434
-if [ -f "$VISION_MODEL" ]; then
-    echo "Starting Qwen2.5-VL vision model (port 11434)..."
-    "$LLAMA_SERVER" \
+# Start Qwen2.5-VL (vision model) on port 11434 using standard llama.cpp
+if [ -f "$VISION_MODEL" ] && [ -n "$SYSTEM_LLAMA_SERVER" ] && [ -x "$SYSTEM_LLAMA_SERVER" ]; then
+    echo "Starting Qwen2.5-VL vision model (port 11434) with llama.cpp..."
+    "$SYSTEM_LLAMA_SERVER" \
         --model "$VISION_MODEL" \
         --host 127.0.0.1 \
         --port 11434 \
@@ -83,8 +96,10 @@ if [ -f "$VISION_MODEL" ]; then
         echo "WARNING: Qwen2.5-VL failed to start"
         VISION_PID=""
     fi
-else
+elif [ ! -f "$VISION_MODEL" ]; then
     echo "WARNING: Qwen2.5-VL model not found at $VISION_MODEL"
+else
+    echo "WARNING: llama-server not available, skipping Qwen startup"
 fi
 
 # Check if at least one model started
