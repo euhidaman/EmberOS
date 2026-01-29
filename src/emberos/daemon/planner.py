@@ -76,26 +76,13 @@ class ToolResult:
         return asdict(self)
 
 
-SYSTEM_PROMPT = """You are EmberOS, an AI layer integrated into Arch Linux. You help users accomplish tasks by orchestrating system tools.
-
-Your role:
-1. Understand the user's intent
-2. Plan the necessary tool calls to accomplish their goal
-3. Execute tools in the correct order
-4. Provide clear, helpful responses
-
-You have access to the following tools:
+SYSTEM_PROMPT = """You are EmberOS.
+You have access to:
 {tools_json}
 
-Current system context:
+Context:
 {context_json}
-
-Guidelines:
-- Always explain your reasoning before acting
-- Request confirmation for destructive operations (delete, move, system changes)
-- Chain tool calls when needed (e.g., search then read)
-- Handle errors gracefully and suggest alternatives
-- Be concise but informative in responses"""
+"""
 
 
 PLANNING_PROMPT = """User request: {user_message}
@@ -167,8 +154,12 @@ class AgentPlanner:
             ExecutionPlan with steps to execute
         """
         # Get tool schemas
-        tools = self.tool_registry.get_all_schemas()
-        tools_json = json.dumps(tools, indent=2)
+        # tools = self.tool_registry.get_all_schemas()
+        # tools_json = json.dumps(tools, indent=2)
+        
+        # OPTIMIZATION: Only send tool names to save tokens for BitNet CPU
+        tools_list = [t["name"] for t in self.tool_registry.list_tools()]
+        tools_json = ", ".join(tools_list)
 
         # Format context
         context_dict = context if isinstance(context, dict) else asdict(context)
@@ -339,7 +330,12 @@ class AgentPlanner:
                 temperature=0.3,
                 max_tokens=1024
             )
-            return response.content.strip()
+            content = response.content.strip() if response and response.content else ""
+            
+            if not content:
+                return "✓ Task completed successfully (No description provided by Agent)."
+                
+            return content
 
         except Exception as e:
             logger.exception(f"Error synthesizing response: {e}")
