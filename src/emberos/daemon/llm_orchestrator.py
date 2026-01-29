@@ -219,10 +219,13 @@ class LLMOrchestrator:
         
         try:
             logger.debug("Starting request...")
+            # Use shorter 30s timeout to detect hangs quickly
+            request_timeout = aiohttp.ClientTimeout(total=30)
             async with self.session.post(
                 f"{server_url}/completion",
                 json=payload,
-                headers={"Connection": "close"}
+                headers={"Connection": "close"},
+                timeout=request_timeout
             ) as resp:
                 logger.debug(f"Response status: {resp.status}")
                 if resp.status != 200:
@@ -233,6 +236,7 @@ class LLMOrchestrator:
                 logger.debug("Response JSON parsed")
 
                 model_name = self._text_model_name if model_type == ModelType.TEXT else self._vision_model_name
+                logger.info(f"Received response from {model_type.value} model: {len(data.get('content', ''))} chars")
                 return CompletionResponse(
                     content=data.get("content", ""),
                     tokens_used=data.get("tokens_evaluated", 0) + data.get("tokens_predicted", 0),
@@ -240,6 +244,13 @@ class LLMOrchestrator:
                     model=model_name or "unknown"
                 )
 
+        except asyncio.TimeoutError:
+            logger.error(f"Request to {model_type.value} model timed out after 30s - server may be hung")
+            # Mark model as disconnected so future requests fallback
+            if model_type == ModelType.TEXT:
+                self._text_connected = False
+                logger.warning("Marking BitNet as disconnected - will fallback to Qwen")
+            raise ConnectionError(f"{model_type.value} model timed out")
         except aiohttp.ClientError as e:
             logger.error(f"Error connecting to LLM server ({model_type}): {e}")
             raise ConnectionError(f"Failed to connect to LLM server: {e}")
