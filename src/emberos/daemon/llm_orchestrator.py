@@ -79,7 +79,7 @@ class LLMOrchestrator:
         self.session: Optional[aiohttp.ClientSession] = None
 
         # Dual model setup
-        self._text_url = "http://127.0.0.1:8080"  # BitNet
+        self._text_url = "http://127.0.0.1:38080"  # BitNet
         self._vision_url = "http://127.0.0.1:11434"  # Qwen2.5-VL
 
         self._text_connected = False
@@ -173,9 +173,8 @@ class LLMOrchestrator:
 
     def _is_model_available(self, model_type: ModelType) -> bool:
         """Check if requested model is available."""
-        if model_type == ModelType.VISION:
-            return self._vision_connected
-        return self._text_connected
+        # Always return True to force an attempt, as the server might be up now
+        return True
 
     async def complete(self, request: CompletionRequest) -> CompletionResponse:
         """
@@ -216,16 +215,22 @@ class LLMOrchestrator:
             "stream": False,
         }
 
+        logger.info(f"Sending request to {server_url}/completion with payload size {len(json.dumps(payload))} bytes")
+        
         try:
+            logger.debug("Starting request...")
             async with self.session.post(
                 f"{server_url}/completion",
-                json=payload
+                json=payload,
+                headers={"Connection": "close"}
             ) as resp:
+                logger.debug(f"Response status: {resp.status}")
                 if resp.status != 200:
                     error_text = await resp.text()
                     raise RuntimeError(f"LLM server error: {error_text}")
 
                 data = await resp.json()
+                logger.debug("Response JSON parsed")
 
                 model_name = self._text_model_name if model_type == ModelType.TEXT else self._vision_model_name
                 return CompletionResponse(
@@ -236,11 +241,11 @@ class LLMOrchestrator:
                 )
 
         except aiohttp.ClientError as e:
-            if model_type == ModelType.TEXT:
-                self._text_connected = False
-            else:
-                self._vision_connected = False
+            logger.error(f"Error connecting to LLM server ({model_type}): {e}")
             raise ConnectionError(f"Failed to connect to LLM server: {e}")
+        except Exception as e:
+            logger.error(f"Unexpected error in complete(): {e}")
+            raise e
 
     async def complete_chat(
         self,
@@ -335,10 +340,12 @@ class LLMOrchestrator:
                             break
 
         except aiohttp.ClientError as e:
-            if model_type == ModelType.TEXT:
-                self._text_connected = False
-            else:
-                self._vision_connected = False
+            logger.error(f"Error connecting to LLM server ({model_type}): {e}")
+            # Don't permanently disable model on one error
+            # if model_type == ModelType.TEXT:
+            #     self._text_connected = False
+            # else:
+            #     self._vision_connected = False
             raise ConnectionError(f"Failed to connect to LLM server: {e}")
 
     async def generate_json(

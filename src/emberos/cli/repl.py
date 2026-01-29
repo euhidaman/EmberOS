@@ -200,10 +200,18 @@ class EmberREPL:
                 # Send command
                 result = await self.client.process_command(text)
                 self._current_task_id = result.get("task_id")
+                
+                # Use result immediately if task is already completed (sync call)
+                if result.get("status") == "completed" or result.get("success"):
+                    update = TaskUpdate(
+                        task_id=self._current_task_id,
+                        event_type="completed",
+                        data=result
+                    )
+                    self._on_completed(update)
+                    return
 
-            # Wait for completion (with timeout)
-            # The actual response will come through signal handlers
-            await asyncio.sleep(0.5)  # Give time for signals
+            # Wait for completion if needed (for async tasks)
 
         except Exception as e:
             self.console.print(f"[red]Error: {e}[/red]")

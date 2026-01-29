@@ -187,3 +187,4 @@ cache/
 # Local configuration overrides
 emberos.local.toml
 
+configs/emberos.toml.active
