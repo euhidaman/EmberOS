@@ -411,30 +411,41 @@ if [ "$NEED_BUILD" = true ]; then
     # Activate venv and install BitNet Python dependencies
     source "$VENV_DIR/bin/activate"
     pip install -q -r requirements.txt
+    deactivate
 
-    # BitNet requires architecture-specific kernel generation
-    # We'll skip setup_env.py and build directly with optimized kernels
-    echo "Building BitNet with optimized kernels for $(uname -m)..."
+    # BitNet requires pre-generated kernel files
+    # Use the preset kernels for bitnet_b1_58-3B (compatible with BitNet-b1.58-2B-4T)
+    echo "Setting up pretuned kernels for $(uname -m)..."
+
+    # Copy the appropriate pretuned kernels based on architecture
+    if [ "$(uname -m)" = "x86_64" ]; then
+        echo "Using TL2 kernels for x86_64..."
+        cp preset_kernels/bitnet_b1_58-3B/bitnet-lut-kernels-tl2.h include/bitnet-lut-kernels.h
+        if [ -f "preset_kernels/bitnet_b1_58-3B/kernel_config_tl2.ini" ]; then
+            cp preset_kernels/bitnet_b1_58-3B/kernel_config_tl2.ini include/kernel_config.ini
+        fi
+        CMAKE_FLAGS="-DBITNET_X86_TL2=ON"
+    elif [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
+        echo "Using TL1 kernels for ARM..."
+        cp preset_kernels/bitnet_b1_58-3B/bitnet-lut-kernels-tl1.h include/bitnet-lut-kernels.h
+        if [ -f "preset_kernels/bitnet_b1_58-3B/kernel_config_tl1.ini" ]; then
+            cp preset_kernels/bitnet_b1_58-3B/kernel_config_tl1.ini include/kernel_config.ini
+        fi
+        CMAKE_FLAGS="-DBITNET_ARM_TL1=ON"
+    else
+        echo "Unsupported architecture: $(uname -m)"
+        echo "BitNet build failed - unsupported architecture"
+        cd "$HOME"
+        return 1
+    fi
 
     # Build BitNet
+    echo "Building BitNet with cmake..."
     mkdir -p build
     cd build
 
-    # Detect architecture and set appropriate flags
-    if [ "$(uname -m)" = "x86_64" ]; then
-        echo "Building for x86_64 with TL2 kernels..."
-        cmake .. -DCMAKE_BUILD_TYPE=Release -DBITNET_X86_TL2=ON -DBUILD_SHARED_LIBS=OFF
-    elif [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
-        echo "Building for ARM with TL1 kernels..."
-        cmake .. -DCMAKE_BUILD_TYPE=Release -DBITNET_ARM_TL1=ON -DBUILD_SHARED_LIBS=OFF
-    else
-        echo "Building for generic architecture with I2_S kernels..."
-        cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
-    fi
-
+    cmake .. -DCMAKE_BUILD_TYPE=Release $CMAKE_FLAGS -DBUILD_SHARED_LIBS=OFF
     cmake --build . --config Release -j$(nproc)
-
-    deactivate
 
     # Verify the server binary was built
     if [ -f "build/bin/llama-server" ]; then
