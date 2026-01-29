@@ -4,8 +4,6 @@
 # Manages both BitNet (text) and Qwen2.5-VL (vision) models
 #
 
-set -e
-
 BITNET_MODEL="/usr/local/share/ember/models/bitnet/ggml-model-i2_s.gguf"
 VISION_MODEL="/usr/local/share/ember/models/qwen2.5-vl-7b-instruct-q4_k_m.gguf"
 
@@ -38,7 +36,8 @@ trap cleanup SIGTERM SIGINT EXIT
 if [ ! -x "$SYSTEM_LLAMA_SERVER" ]; then
     echo "ERROR: System llama-server not found at $SYSTEM_LLAMA_SERVER"
     echo "Install with: yay -S llama.cpp"
-    exit 1
+    echo "Will try to continue with BitNet only..."
+    SYSTEM_LLAMA_SERVER=""
 fi
 
 # Start BitNet (text model) on port 38080
@@ -74,9 +73,9 @@ else
 fi
 
 # Start Qwen2.5-VL (vision model) on port 11434
-if [ -f "$VISION_MODEL" ]; then
+if [ -f "$VISION_MODEL" ] && [ -n "$SYSTEM_LLAMA_SERVER" ] && [ -x "$SYSTEM_LLAMA_SERVER" ]; then
     echo "Starting Qwen2.5-VL vision model (port 11434)..."
-    "$LLAMA_SERVER" \
+    "$SYSTEM_LLAMA_SERVER" \
         --model "$VISION_MODEL" \
         --host 127.0.0.1 \
         --port 11434 \
@@ -94,8 +93,10 @@ if [ -f "$VISION_MODEL" ]; then
         echo "WARNING: Qwen2.5-VL failed to start"
         VISION_PID=""
     fi
-else
+elif [ ! -f "$VISION_MODEL" ]; then
     echo "WARNING: Qwen2.5-VL model not found at $VISION_MODEL"
+else
+    echo "WARNING: System llama-server not available, cannot start Qwen2.5-VL"
 fi
 
 # Check if at least one model started
