@@ -413,38 +413,31 @@ if [ "$NEED_BUILD" = true ]; then
     pip install -q -r requirements.txt
     deactivate
 
-    # BitNet requires pre-generated kernel files
-    # Use the preset kernels for bitnet_b1_58-3B (compatible with BitNet-b1.58-2B-4T)
-    echo "Setting up pretuned kernels for $(uname -m)..."
+    # BitNet build - use I2_S quantization (most compatible)
+    # TL1/TL2 kernels can cause compilation issues on some systems
+    echo "Building BitNet with I2_S kernels (most compatible)..."
 
-    # Copy the appropriate pretuned kernels based on architecture
-    if [ "$(uname -m)" = "x86_64" ]; then
-        echo "Using TL2 kernels for x86_64..."
-        cp preset_kernels/bitnet_b1_58-3B/bitnet-lut-kernels-tl2.h include/bitnet-lut-kernels.h
-        if [ -f "preset_kernels/bitnet_b1_58-3B/kernel_config_tl2.ini" ]; then
-            cp preset_kernels/bitnet_b1_58-3B/kernel_config_tl2.ini include/kernel_config.ini
-        fi
-        CMAKE_FLAGS="-DBITNET_X86_TL2=ON"
-    elif [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
-        echo "Using TL1 kernels for ARM..."
-        cp preset_kernels/bitnet_b1_58-3B/bitnet-lut-kernels-tl1.h include/bitnet-lut-kernels.h
-        if [ -f "preset_kernels/bitnet_b1_58-3B/kernel_config_tl1.ini" ]; then
-            cp preset_kernels/bitnet_b1_58-3B/kernel_config_tl1.ini include/kernel_config.ini
-        fi
-        CMAKE_FLAGS="-DBITNET_ARM_TL1=ON"
-    else
-        echo "Unsupported architecture: $(uname -m)"
-        echo "BitNet build failed - unsupported architecture"
-        cd "$HOME"
-        return 1
-    fi
+    # Create a minimal placeholder kernel file (BitNet will generate proper kernels at runtime)
+    mkdir -p include
+    cat > include/bitnet-lut-kernels.h << 'EOF'
+// Placeholder BitNet LUT kernels header
+// BitNet will use runtime kernel selection
+#ifndef BITNET_LUT_KERNELS_H
+#define BITNET_LUT_KERNELS_H
 
-    # Build BitNet
-    echo "Building BitNet with cmake..."
+// Empty placeholder - BitNet uses I2_S quantization at runtime
+// No precompiled LUT kernels needed
+
+#endif // BITNET_LUT_KERNELS_H
+EOF
+
+    # Build BitNet with I2_S support (no TL1/TL2 - avoids compilation issues)
+    echo "Building BitNet with cmake (this may take 5-10 minutes)..."
     mkdir -p build
     cd build
 
-    cmake .. -DCMAKE_BUILD_TYPE=Release $CMAKE_FLAGS -DBUILD_SHARED_LIBS=OFF
+    # Build without TL1/TL2 optimizations to avoid template bloat
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
     cmake --build . --config Release -j$(nproc)
 
     # Verify the server binary was built
