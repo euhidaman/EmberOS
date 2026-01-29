@@ -437,14 +437,22 @@ EOF
     cd build
 
     # Build without TL1/TL2 optimizations to avoid template bloat
-    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DCMAKE_RUNTIME_OUTPUT_DIRECTORY="$BITNET_BUILD_DIR/bin"
     cmake --build . --config Release -j$(nproc)
 
     # Verify the server binary was built
-    if [ -f "build/bin/llama-server" ]; then
+    BITNET_SERVER_BIN=""
+    for candidate in "$BITNET_BUILD_DIR/bin/llama-server" "$BITNET_BUILD_DIR/build/bin/llama-server"; do
+        if [ -f "$candidate" ]; then
+            BITNET_SERVER_BIN="$candidate"
+            break
+        fi
+    done
+
+    if [ -n "$BITNET_SERVER_BIN" ]; then
         # Install the BitNet-compatible server
         sudo mkdir -p /usr/local/share/ember/bin
-        sudo cp build/bin/llama-server /usr/local/share/ember/bin/bitnet-server
+        sudo cp "$BITNET_SERVER_BIN" /usr/local/share/ember/bin/bitnet-server
         sudo chmod +x /usr/local/share/ember/bin/bitnet-server
         echo -e "${GREEN}✓ BitNet server built and installed from bitnet.cpp${NC}"
 
@@ -459,6 +467,7 @@ EOF
         echo -e "${GREEN}✓ Build files cleaned up${NC}"
     else
         echo -e "${RED}✗ BitNet build failed - llama-server binary not found${NC}"
+        echo "Expected in: $BITNET_BUILD_DIR/bin/llama-server or $BITNET_BUILD_DIR/build/bin/llama-server"
         echo "Check build logs for errors."
         echo "System will continue with Qwen only."
         cd "$HOME"
