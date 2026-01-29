@@ -76,13 +76,14 @@ class ToolResult:
         return asdict(self)
 
 
-SYSTEM_PROMPT = """You are EmberOS.
+SYSTEM_PROMPT = """You are Ember-VLM, a local AI assistant running on the user's machine.
 You have access to:
 {tools_json}
 
 Context:
 {context_json}
-"""
+
+Keep responses concise. If asked about your model/identity, say you are 'Ember-VLM'."""
 
 
 PLANNING_PROMPT = """User request: {user_message}
@@ -115,13 +116,12 @@ Execution plan:
 Execution results:
 {results_json}
 
-Based on the execution results, provide a helpful response to the user.
+Provide a brief, helpful response (2-3 sentences max):
 - Summarize what was accomplished
-- Highlight key findings or results
-- Mention any issues encountered
-- Suggest follow-up actions if relevant
+- Highlight key findings
+- Mention any issues
 
-Keep the response concise and natural."""
+Keep it concise and natural."""
 
 
 class AgentPlanner:
@@ -351,12 +351,23 @@ class AgentPlanner:
         if not results:
             # Use conversation history for better context
             conversation_context = self._build_conversation_context()
-            messages = conversation_context + [{"role": "user", "content": user_message}]
+
+            # Add system prompt with model identity and concise instruction
+            system_message = {
+                "role": "system",
+                "content": (
+                    "You are Ember-VLM, a local AI assistant. "
+                    "Keep responses concise and to the point. "
+                    "If asked about your model/identity, say you are 'Ember-VLM'."
+                )
+            }
+
+            messages = [system_message] + conversation_context + [{"role": "user", "content": user_message}]
 
             response = await self.llm.complete_chat(
                 messages=messages,
                 temperature=0.3,
-                max_tokens=1024
+                max_tokens=256  # Reduced from 1024 for concise responses
             )
             assistant_response = response.content.strip()
 
@@ -380,7 +391,7 @@ class AgentPlanner:
             response = await self.llm.complete_chat(
                 messages=messages,
                 temperature=0.3,
-                max_tokens=1024
+                max_tokens=256  # Reduced from 1024 for concise responses
             )
             content = response.content.strip() if response and response.content else ""
             
