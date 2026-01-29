@@ -211,6 +211,76 @@ class AgentPlanner:
         # Add user message to history
         self._add_to_history("user", user_message)
 
+        # Fast-path: rule-based plans for common factual queries
+        normalized = user_message.strip().lower()
+        if any(phrase in normalized for phrase in [
+            "which folder am i in",
+            "where am i",
+            "current directory",
+            "working directory",
+            "which folder are you in",
+            "where are you"
+        ]):
+            return ExecutionPlan(
+                reasoning="Use system.getcwd to return the current working directory.",
+                steps=[ToolCall(tool="system.getcwd", args={}, description="Get current working directory")],
+                requires_confirmation=False
+            )
+
+        if "desktop" in normalized and any(word in normalized for word in ["files", "file", "list", "what is in", "show"]):
+            return ExecutionPlan(
+                reasoning="List files in Desktop directory.",
+                steps=[ToolCall(
+                    tool="filesystem.list",
+                    args={"path": "~/Desktop", "recursive": False, "show_hidden": False, "max_items": 20},
+                    description="List files in Desktop"
+                )],
+                requires_confirmation=False
+            )
+
+        if "downloads" in normalized and any(word in normalized for word in ["files", "file", "list", "what is in", "show"]):
+            return ExecutionPlan(
+                reasoning="List files in Downloads directory.",
+                steps=[ToolCall(
+                    tool="filesystem.list",
+                    args={"path": "~/Downloads", "recursive": False, "show_hidden": False, "max_items": 20},
+                    description="List files in Downloads"
+                )],
+                requires_confirmation=False
+            )
+
+        # Rule-based: list any visible folder under home (surface-level)
+        if any(word in normalized for word in ["files", "file", "list", "what is in", "show"]):
+            import re
+            from pathlib import Path
+
+            home = Path.home()
+            # Match: "files in <folder>" or "list <folder>"
+            match = re.search(r"(?:files|file|list|show|what is in)\s+(?:in\s+)?([\w\-\s]+)", normalized)
+            if match:
+                folder_name = match.group(1).strip()
+                # Normalize common aliases
+                if folder_name in ("desktop", "downloads", "documents", "pictures", "videos", "music"):
+                    target = f"~/{folder_name.capitalize()}" if folder_name != "downloads" else "~/Downloads"
+                else:
+                    # Surface-level only: direct child of home
+                    candidate = home / folder_name
+                    if candidate.exists() and candidate.is_dir():
+                        target = str(candidate)
+                    else:
+                        target = None
+
+                if target:
+                    return ExecutionPlan(
+                        reasoning=f"List files in {target}.",
+                        steps=[ToolCall(
+                            tool="filesystem.list",
+                            args={"path": target, "recursive": False, "show_hidden": False, "max_items": 20},
+                            description=f"List files in {target}"
+                        )],
+                        requires_confirmation=False
+                    )
+
         # Log context size
         context_size = self._get_context_size()
         logger.info(f"Current context size: ~{context_size} tokens")
@@ -414,8 +484,11 @@ class AgentPlanner:
             )
             content = response.content.strip() if response and response.content else ""
             
-            if not content:
-                content = "✓ Task completed successfully (No description provided by Agent)."
+            # If LLM didn't provide a response, create one from results
+            if not content and results:
+                content = self._format_results_fallback(results)
+            elif not content:
+                content = "✓ Task completed successfully."
 
             # Add to history
             self._add_to_history("assistant", content)
@@ -425,17 +498,84 @@ class AgentPlanner:
         except Exception as e:
             logger.exception(f"Error synthesizing response: {e}")
 
-            # Fallback: basic result summary
-            success_count = sum(1 for r in results if r.success)
-            total_count = len(results)
-
-            if success_count == total_count:
-                fallback = f"✓ Completed {total_count} operation(s) successfully."
+            # Fallback: Show results directly if available
+            if results:
+                fallback = self._format_results_fallback(results)
             else:
-                fallback = f"Completed {success_count}/{total_count} operations. Some errors occurred."
+                # Basic success/failure summary
+                success_count = sum(1 for r in results if r.success)
+                total_count = len(results)
+
+                if success_count == total_count:
+                    fallback = f"✓ Completed {total_count} operation(s) successfully."
+                else:
+                    fallback = f"Completed {success_count}/{total_count} operations. Some errors occurred."
 
             self._add_to_history("assistant", fallback)
             return fallback
+
+    def _format_results_fallback(self, results: list[ToolResult]) -> str:
+        """Format results when LLM synthesis fails."""
+        if not results:
+            return "✓ Task completed."
+
+        # For single result, try to extract useful info
+        if len(results) == 1:
+            result = results[0]
+            if result.success and isinstance(result.result, dict):
+                data = result.result
+
+                # Handle filesystem.list results
+                if "items" in data and "path" in data:
+                    items = data["items"]
+                    path = data["path"]
+                    count = len(items)
+                    total = data.get("total_count", count)
+                    truncated = data.get("truncated", False)
+
+                    if count == 0:
+                        return f"No files found in {path}"
+
+                    # Format file list
+                    lines = [f"Found {count} items in {path}:"]
+                    for i, item in enumerate(items[:20], 1):
+                        name = item.get("name", "unknown")
+                        is_dir = item.get("is_dir", False)
+                        size = item.get("size", 0)
+                        prefix = "[DIR]" if is_dir else "[FILE]"
+
+                        if is_dir:
+                            lines.append(f"{i}. {prefix} {name}/")
+                        else:
+                            size_str = self._format_size(size)
+                            lines.append(f"{i}. {prefix} {name} ({size_str})")
+
+                    if truncated and total > count:
+                        lines.append(f"Showing {count} of {total} items. Reply 'show more' to continue.")
+
+                    return "\n".join(lines)
+
+                # Handle system.getcwd results
+                elif "cwd" in data or "display" in data:
+                    return f"Current directory: {data.get('display', data.get('cwd', 'unknown'))}"
+
+            elif not result.success:
+                return f"Error: {result.error}"
+
+        # Multiple results - just show summary
+        success_count = sum(1 for r in results if r.success)
+        return f"Completed {success_count}/{len(results)} operations."
+
+    def _format_size(self, size: int) -> str:
+        """Format file size for display."""
+        if size < 1024:
+            return f"{size}B"
+        elif size < 1024 * 1024:
+            return f"{size / 1024:.1f}KB"
+        elif size < 1024 * 1024 * 1024:
+            return f"{size / (1024 * 1024):.1f}MB"
+        else:
+            return f"{size / (1024 * 1024 * 1024):.1f}GB"
 
     async def refine_plan(
         self,
