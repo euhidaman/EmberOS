@@ -118,7 +118,7 @@ class EmberREPL:
             self.offline_client = OfflineClient()
             await self.offline_client.initialize()
 
-        self.console.print("  Type [bold]:help[/bold] or press [bold]Ctrl+D[/bold] to exit")
+        self.console.print("  Type [bold]:help[/bold] or [bold]exit[/bold] to quit")
         self.console.print()
 
         # Initialize command handler
@@ -159,8 +159,8 @@ class EmberREPL:
                 if not text:
                     continue
 
-                # Handle exit commands (exit, Exit, quit, q)
-                if text.lower() in ('exit', 'quit', 'q'):
+                # Handle exit commands (exit, Exit, q)
+                if text.lower() in ('exit', 'q'):
                     self.console.print("[yellow]Clearing conversation history and exiting...[/yellow]")
                     await self._clear_conversation_history()
                     break
@@ -178,10 +178,12 @@ class EmberREPL:
                 await self._process_command(text)
 
             except KeyboardInterrupt:
-                self.console.print("\n[dim]Interrupted. Type 'exit' or 'quit' to clear history and exit.[/dim]")
+                # Ctrl+C - show message but don't exit
+                self.console.print("\n[dim]Interrupted. Type 'exit' or 'q' to clear history and exit.[/dim]")
                 continue
-            except EOFError:
-                self.console.print("[yellow]Clearing conversation history and exiting...[/yellow]")
+            except (EOFError, asyncio.CancelledError):
+                # Ctrl+Z or Ctrl+D - clear history and exit
+                self.console.print("\n[yellow]Clearing conversation history and exiting...[/yellow]")
                 await self._clear_conversation_history()
                 break
             except Exception as e:
