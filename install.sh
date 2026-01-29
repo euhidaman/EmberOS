@@ -349,9 +349,35 @@ fi
 echo -e "${BLUE}Building BitNet server from bitnet.cpp...${NC}"
 
 BITNET_BUILD_DIR="$EMBER_DIR/bitnet-build"
+NEED_BUILD=false
 
+# Check if bitnet-server exists
 if [ ! -f "/usr/local/share/ember/bin/bitnet-server" ]; then
-    echo "BitNet server not found. Building from Microsoft's bitnet.cpp..."
+    echo "BitNet server not found."
+    NEED_BUILD=true
+else
+    # Verify if existing bitnet-server is compatible (check if it's from bitnet.cpp)
+    echo "Checking existing bitnet-server compatibility..."
+
+    # Try to get version - bitnet.cpp version will work, symlinked llama.cpp might fail with BitNet model
+    if /usr/local/share/ember/bin/bitnet-server --version &> /dev/null; then
+        # Check if it's a symlink (old broken approach)
+        if [ -L "/usr/local/share/ember/bin/bitnet-server" ]; then
+            echo "Existing bitnet-server is a symlink (old method). Rebuilding..."
+            sudo rm /usr/local/share/ember/bin/bitnet-server
+            NEED_BUILD=true
+        else
+            echo -e "${GREEN}✓ BitNet server already installed and verified${NC}"
+        fi
+    else
+        echo "Existing bitnet-server not working properly. Rebuilding..."
+        sudo rm -f /usr/local/share/ember/bin/bitnet-server
+        NEED_BUILD=true
+    fi
+fi
+
+if [ "$NEED_BUILD" = true ]; then
+    echo "Building from Microsoft's bitnet.cpp..."
 
     # Check build dependencies
     if ! command -v cmake &> /dev/null || ! command -v make &> /dev/null; then
@@ -400,9 +426,7 @@ if [ ! -f "/usr/local/share/ember/bin/bitnet-server" ]; then
         echo "System will continue with Qwen only."
         cd "$HOME"
     fi
-else
-    echo -e "${GREEN}✓ BitNet server already installed${NC}"
-fi
+fi  # End of NEED_BUILD check
 
 # Verify llama.cpp is installed for Qwen
 if ! command -v llama-server &> /dev/null; then
