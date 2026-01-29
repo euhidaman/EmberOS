@@ -618,6 +618,90 @@ EmberOS is designed with security in mind:
 
 ## 🛠️ Development
 
+### Quick Debug Commands (Linux)
+
+```bash
+# 1. Pull latest changes and reinstall
+cd ~/EmberOS
+git pull
+./install.sh
+
+# 2. Restart services with verbose logging
+systemctl --user daemon-reload
+systemctl --user restart emberd ember-llm
+
+# 3. Watch logs in real-time (open in separate terminals)
+journalctl --user -u emberd -f          # Terminal 1: Daemon logs
+journalctl --user -u ember-llm -f       # Terminal 2: LLM server logs
+
+# 4. Run debug script to check all components
+source ~/.local/share/ember/venv/bin/activate
+python ~/EmberOS/debug_ember.py
+
+# 5. Test BitNet server directly
+curl http://127.0.0.1:38080/health
+curl -X POST http://127.0.0.1:38080/completion \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Hello", "n_predict": 10}'
+
+# 6. Test Qwen server directly
+curl http://127.0.0.1:11434/health
+curl -X POST http://127.0.0.1:11434/completion \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "What is 2+2?", "n_predict": 20}'
+
+# 7. Test daemon connectivity
+ember
+# Type: what time is it?
+
+# 8. Check service status
+systemctl --user status emberd ember-llm
+```
+
+### Debugging
+
+If EmberOS is not responding or behaving unexpectedly, use the debug utility:
+
+**On Linux:**
+```bash
+cd ~/EmberOS
+source ~/.local/share/ember/venv/bin/activate
+python debug_ember.py
+```
+
+**On Windows:**
+```powershell
+cd D:\BabyLM\EmberOS
+.\.venv\Scripts\activate
+python debug_ember.py
+```
+
+The debug script checks:
+- ✅ LLM server health (BitNet port 38080, Qwen port 11434)
+- ✅ Model file existence
+- ✅ Daemon connectivity (D-Bus)
+- ✅ Full workflow execution
+- ✅ Signal responses
+
+**Check service logs (Linux):**
+```bash
+# EmberOS daemon logs
+journalctl --user -u emberd -n 100 --no-pager -f
+
+# LLM server logs
+journalctl --user -u ember-llm -n 100 --no-pager -f
+```
+
+**Common Issues:**
+
+| Issue | Solution |
+|-------|----------|
+| No response from commands | Check `debug_ember.py` output, verify both LLM servers running |
+| BitNet not responding | Check port 38080: `curl http://127.0.0.1:38080/health` |
+| Qwen not responding | Check port 11434: `curl http://127.0.0.1:11434/health` |
+| Daemon not starting | Check `journalctl --user -u emberd -n 50` |
+| D-Bus connection failed | Restart session: `systemctl --user restart emberd` |
+
 ### Creating Custom Tools
 
 Create a new tool in `~/.local/share/ember/tools/`:

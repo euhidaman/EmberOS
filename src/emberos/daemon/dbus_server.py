@@ -105,20 +105,28 @@ class EmberAgentInterface(ServiceInterface):
 
     async def _process_command_and_wait(self, task_id: str, message: str) -> dict:
         """Process command and return complete result."""
+        logger.info(f"[DBUS] Processing command (task_id={task_id}): '{message[:100]}...'")
         start_time = datetime.now()
 
         try:
             # Get context snapshot
+            logger.debug(f"[DBUS] Getting context snapshot...")
             context = await self.daemon.context_monitor.get_snapshot()
+            logger.debug(f"[DBUS] Context: active_window={context.active_window}, cwd={context.current_directory}")
 
             # Emit progress
             self.TaskProgress(task_id, "planning", "Building execution plan...")
+            logger.debug(f"[DBUS] Emitted TaskProgress: planning")
 
             # Generate plan
+            logger.info(f"[DBUS] Creating plan...")
             plan = await self.daemon.planner.create_plan(message, context)
+            logger.info(f"[DBUS] Plan created: {len(plan.steps)} steps, confirmation={plan.requires_confirmation}")
+            logger.debug(f"[DBUS] Plan reasoning: {plan.reasoning[:200]}...")
 
             # Check if confirmation required
             if plan.requires_confirmation:
+                logger.info(f"[DBUS] Confirmation required, sending request to user")
                 self.ConfirmationRequired(
                     task_id,
                     json.dumps({
@@ -134,14 +142,20 @@ class EmberAgentInterface(ServiceInterface):
                 }
 
             # Execute plan
+            logger.info(f"[DBUS] Executing plan with {len(plan.steps)} steps...")
             self.TaskProgress(task_id, "executing", "Executing plan...")
             results = await self.daemon.execute_plan(plan)
+            logger.info(f"[DBUS] Plan executed: {len(results)} results")
 
             # Synthesize response
+            logger.info(f"[DBUS] Synthesizing response...")
             self.TaskProgress(task_id, "synthesizing", "Generating response...")
             response = await self.daemon.planner.synthesize_response(message, plan, results)
+            logger.info(f"[DBUS] Response synthesized: {len(response)} chars")
+            logger.debug(f"[DBUS] Response preview: {response[:200]}...")
 
             # Store in memory
+            logger.debug(f"[DBUS] Storing in memory...")
             await self.daemon.memory.store_conversation(message, response, plan, results)
 
             duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
@@ -157,12 +171,14 @@ class EmberAgentInterface(ServiceInterface):
             }
 
             # Emit completion signal
+            logger.info(f"[DBUS] Task completed successfully in {duration_ms}ms")
             self.TaskCompleted(task_id, json.dumps(result))
 
             return result
 
         except Exception as e:
-            logger.exception(f"Error processing command: {e}")
+            logger.error(f"[DBUS] Error processing command: {type(e).__name__}: {e}")
+            logger.exception(f"[DBUS] Full traceback:")
             duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
 
             error_result = {

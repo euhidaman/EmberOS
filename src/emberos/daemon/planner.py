@@ -180,12 +180,19 @@ class AgentPlanner:
         ]
 
         try:
+            logger.info(f"[PLANNER] Creating plan for: '{user_message[:100]}...'")
+            logger.debug(f"[PLANNER] System prompt length: {len(system_prompt)}")
+            logger.debug(f"[PLANNER] Planning prompt: {planning_prompt[:200]}...")
+
             response = await self.llm.complete_chat(
                 messages=messages,
                 system_prompt=system_prompt,
                 temperature=0.1,
                 max_tokens=2048
             )
+
+            logger.info(f"[PLANNER] Got LLM response: {response.tokens_used} tokens")
+            logger.debug(f"[PLANNER] Raw response content:\n{response.content[:500]}...")
 
             # Parse response
             content = response.content.strip()
@@ -194,6 +201,8 @@ class AgentPlanner:
             plan_data = self._extract_json(content)
 
             if not plan_data:
+                logger.warning(f"[PLANNER] Failed to extract JSON from response")
+                logger.debug(f"[PLANNER] Full response content:\n{content}")
                 # Fallback: create a simple response plan
                 return ExecutionPlan(
                     reasoning="Unable to parse plan, providing direct response",
@@ -201,15 +210,20 @@ class AgentPlanner:
                     requires_confirmation=False
                 )
 
+            logger.info(f"[PLANNER] Successfully parsed plan with {len(plan_data.get('plan', plan_data.get('steps', [])))} steps")
+            logger.debug(f"[PLANNER] Plan data: {json.dumps(plan_data, indent=2)[:300]}...")
+
             plan = ExecutionPlan.from_dict(plan_data)
 
             # Validate and adjust plan
             plan = self._validate_plan(plan)
 
+            logger.info(f"[PLANNER] Plan validated: {len(plan.steps)} steps, confirmation={plan.requires_confirmation}")
             return plan
 
         except Exception as e:
-            logger.exception(f"Error creating plan: {e}")
+            logger.error(f"[PLANNER] Error creating plan: {type(e).__name__}: {e}")
+            logger.exception(f"[PLANNER] Full traceback:")
             return ExecutionPlan(
                 reasoning=f"Error creating plan: {e}",
                 steps=[],
@@ -218,23 +232,30 @@ class AgentPlanner:
 
     def _extract_json(self, content: str) -> Optional[dict]:
         """Extract JSON from LLM response."""
+        logger.debug(f"[PLANNER] Attempting to extract JSON from {len(content)} chars")
+
         # Try direct parse
         try:
-            return json.loads(content)
-        except json.JSONDecodeError:
-            pass
+            result = json.loads(content)
+            logger.debug(f"[PLANNER] Direct JSON parse successful")
+            return result
+        except json.JSONDecodeError as e:
+            logger.debug(f"[PLANNER] Direct JSON parse failed: {e}")
 
         # Try to find JSON in content
         import re
         json_match = re.search(r'\{[\s\S]*\}', content)
         if json_match:
             try:
-                return json.loads(json_match.group())
-            except json.JSONDecodeError:
-                pass
+                result = json.loads(json_match.group())
+                logger.debug(f"[PLANNER] Regex JSON extraction successful")
+                return result
+            except json.JSONDecodeError as e:
+                logger.debug(f"[PLANNER] Regex JSON parse failed: {e}")
 
         # Try removing markdown code blocks
         if "```" in content:
+            logger.debug(f"[PLANNER] Trying to extract from code block")
             lines = content.split("\n")
             json_lines = []
             in_block = False
@@ -246,10 +267,13 @@ class AgentPlanner:
 
             if json_lines:
                 try:
-                    return json.loads("\n".join(json_lines))
-                except json.JSONDecodeError:
-                    pass
+                    result = json.loads("\n".join(json_lines))
+                    logger.debug(f"[PLANNER] Code block extraction successful")
+                    return result
+                except json.JSONDecodeError as e:
+                    logger.debug(f"[PLANNER] Code block JSON parse failed: {e}")
 
+        logger.warning(f"[PLANNER] All JSON extraction methods failed")
         return None
 
     def _validate_plan(self, plan: ExecutionPlan) -> ExecutionPlan:
@@ -303,14 +327,18 @@ class AgentPlanner:
         Returns:
             Natural language response for the user
         """
+        logger.info(f"[PLANNER] Synthesizing response for {len(results)} results")
+
         # If no tools were executed, generate direct response
         if not results:
+            logger.debug(f"[PLANNER] No tools executed, generating direct response")
             messages = [{"role": "user", "content": user_message}]
             response = await self.llm.complete_chat(
                 messages=messages,
                 temperature=0.3,
                 max_tokens=1024
             )
+            logger.info(f"[PLANNER] Direct response generated: {len(response.content)} chars")
             return response.content.strip()
 
         # Build synthesis prompt
@@ -322,9 +350,11 @@ class AgentPlanner:
             results_json=results_json
         )
 
+        logger.debug(f"[PLANNER] Synthesis prompt length: {len(synthesis_prompt)}")
         messages = [{"role": "user", "content": synthesis_prompt}]
 
         try:
+            logger.debug(f"[PLANNER] Requesting synthesis from LLM...")
             response = await self.llm.complete_chat(
                 messages=messages,
                 temperature=0.3,
@@ -333,12 +363,16 @@ class AgentPlanner:
             content = response.content.strip() if response and response.content else ""
             
             if not content:
+                logger.warning(f"[PLANNER] Empty response from LLM synthesis")
                 return "✓ Task completed successfully (No description provided by Agent)."
-                
+
+            logger.info(f"[PLANNER] Synthesis complete: {len(content)} chars")
+            logger.debug(f"[PLANNER] Response preview: {content[:200]}...")
             return content
 
         except Exception as e:
-            logger.exception(f"Error synthesizing response: {e}")
+            logger.error(f"[PLANNER] Error synthesizing response: {type(e).__name__}: {e}")
+            logger.exception(f"[PLANNER] Synthesis error traceback:")
 
             # Fallback: basic result summary
             success_count = sum(1 for r in results if r.success)
