@@ -345,16 +345,55 @@ else
     echo -e "${GREEN}✓ BitNet model already present${NC}"
 fi
 
-# Install BitNet-compatible server binary
-if [ -f "$SCRIPT_DIR/bin/bitnet-server" ]; then
-    echo "Installing BitNet server binary..."
-    sudo mkdir -p /usr/local/share/ember/bin
-    sudo cp "$SCRIPT_DIR/bin/bitnet-server" /usr/local/share/ember/bin/
-    sudo chmod +x /usr/local/share/ember/bin/bitnet-server
-    echo -e "${GREEN}✓ BitNet server installed${NC}"
+# Build BitNet-compatible llama-server
+echo -e "${BLUE}Step 11: Setting up BitNet server...${NC}"
+
+BITNET_BUILD_DIR="$EMBER_DIR/bitnet"
+
+if [ ! -f "/usr/local/share/ember/bin/bitnet-server" ]; then
+    echo "BitNet server not found. Building from source..."
+
+    # Check build dependencies
+    if ! command -v cmake &> /dev/null || ! command -v make &> /dev/null; then
+        echo -e "${YELLOW}Installing build dependencies...${NC}"
+        sudo pacman -S --needed cmake base-devel
+    fi
+
+    # Clone BitNet repository
+    if [ -d "$BITNET_BUILD_DIR" ]; then
+        echo "Cleaning old BitNet build..."
+        rm -rf "$BITNET_BUILD_DIR"
+    fi
+
+    echo "Cloning Microsoft BitNet repository..."
+    git clone https://github.com/microsoft/BitNet.git "$BITNET_BUILD_DIR"
+
+    cd "$BITNET_BUILD_DIR"
+
+    # Build BitNet
+    echo "Building BitNet (this may take 5-10 minutes)..."
+    mkdir -p build
+    cd build
+
+    cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
+    cmake --build . --config Release -j$(nproc)
+
+    if [ -f "bin/llama-server" ]; then
+        # Install the BitNet-compatible server
+        sudo mkdir -p /usr/local/share/ember/bin
+        sudo cp bin/llama-server /usr/local/share/ember/bin/bitnet-server
+        sudo chmod +x /usr/local/share/ember/bin/bitnet-server
+        echo -e "${GREEN}✓ BitNet server built and installed${NC}"
+
+        # Clean up build directory to save space
+        cd "$EMBER_DIR"
+        rm -rf "$BITNET_BUILD_DIR"
+    else
+        echo -e "${RED}✗ BitNet build failed${NC}"
+        echo "System will use Qwen for all tasks."
+    fi
 else
-    echo -e "${YELLOW}⚠ BitNet server binary not found in bin/bitnet-server${NC}"
-    echo "BitNet will not be available. System will use Qwen for all tasks."
+    echo -e "${GREEN}✓ BitNet server already installed${NC}"
 fi
 
 # Check if standard llama-server exists for Qwen
