@@ -412,10 +412,27 @@ if [ "$NEED_BUILD" = true ]; then
     source "$VENV_DIR/bin/activate"
     pip install -q -r requirements.txt
 
-    # Setup environment and prepare model using BitNet's setup script
-    # This generates optimized kernels for the architecture
-    echo "Preparing BitNet environment (generating optimized kernels)..."
-    python setup_env.py -md "$MODEL_DIR/bitnet" -q i2_s
+    # BitNet requires architecture-specific kernel generation
+    # We'll skip setup_env.py and build directly with optimized kernels
+    echo "Building BitNet with optimized kernels for $(uname -m)..."
+
+    # Build BitNet
+    mkdir -p build
+    cd build
+
+    # Detect architecture and set appropriate flags
+    if [ "$(uname -m)" = "x86_64" ]; then
+        echo "Building for x86_64 with TL2 kernels..."
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DBITNET_X86_TL2=ON -DBUILD_SHARED_LIBS=OFF
+    elif [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
+        echo "Building for ARM with TL1 kernels..."
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DBITNET_ARM_TL1=ON -DBUILD_SHARED_LIBS=OFF
+    else
+        echo "Building for generic architecture with I2_S kernels..."
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF
+    fi
+
+    cmake --build . --config Release -j$(nproc)
 
     deactivate
 
