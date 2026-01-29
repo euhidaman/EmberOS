@@ -47,15 +47,16 @@ if [ -f "$BITNET_MODEL" ]; then
         --threads 4 \
         --n-gpu-layers 0 \
         --temp 0.1 \
-        --log-disable 2>&1 | while IFS= read -r line; do echo "[BitNet] $line"; done &
+        2>&1 | while IFS= read -r line; do echo "[BitNet] $line"; done &
 
     BITNET_PID=$!
     echo "BitNet started (PID: $BITNET_PID)"
-    sleep 1
+    sleep 2
 
     # Verify it's still running
     if ! kill -0 $BITNET_PID 2>/dev/null; then
-        echo "WARNING: BitNet failed to start"
+        echo "WARNING: BitNet failed to start (check logs above for errors)"
+        echo "NOTE: Standard llama-server may not support BitNet 1.58-bit quantization"
         BITNET_PID=""
     fi
 else

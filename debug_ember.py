@@ -452,7 +452,6 @@ async def check_llm_orchestrator_logs():
         config = EmberConfig.load()
         print(f"\nLLM Configuration:")
         print(f"  Server URL: {config.llm.server_url}")
-        print(f"  Model: {config.llm.default_model}")
         print(f"  Timeout: {config.llm.timeout}s")
         print(f"  Temperature: {config.llm.temperature}")
 
