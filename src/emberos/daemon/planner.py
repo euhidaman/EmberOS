@@ -134,9 +134,45 @@ class AgentPlanner:
     3. Synthesize user-friendly responses from results
     """
 
-    def __init__(self, llm: LLMOrchestrator, tool_registry: Any):
+    def __init__(self, llm: LLMOrchestrator, tool_registry):
         self.llm = llm
         self.tool_registry = tool_registry
+        # Conversation history for context (sliding window)
+        self._conversation_history: list[dict] = []
+        self._max_history_turns = 8  # Keep last 8 turns (4 user + 4 assistant)
+
+    def _add_to_history(self, role: str, content: str) -> None:
+        """Add a message to conversation history with sliding window."""
+        self._conversation_history.append({
+            "role": role,
+            "content": content,
+            "timestamp": datetime.now().isoformat()
+        })
+
+        # Apply sliding window: keep only last N turns
+        if len(self._conversation_history) > self._max_history_turns * 2:
+            # Keep last N turns (each turn = user + assistant)
+            self._conversation_history = self._conversation_history[-(self._max_history_turns * 2):]
+            logger.info(f"Trimmed conversation history to last {self._max_history_turns} turns")
+
+    def _get_context_size(self) -> int:
+        """Estimate context size in tokens (rough approximation)."""
+        total_chars = sum(len(msg["content"]) for msg in self._conversation_history)
+        # Rough estimate: 1 token ≈ 4 characters
+        return total_chars // 4
+
+    def _build_conversation_context(self) -> list[dict]:
+        """Build conversation context from history."""
+        context_size = self._get_context_size()
+        if context_size > 3000:
+            logger.warning(f"Context size is {context_size} tokens - this may cause slowdowns")
+
+        return self._conversation_history.copy()
+
+    def clear_history(self) -> None:
+        """Clear conversation history (useful for starting fresh)."""
+        logger.info("Clearing conversation history")
+        self._conversation_history = []
 
     async def create_plan(
         self,
@@ -153,6 +189,13 @@ class AgentPlanner:
         Returns:
             ExecutionPlan with steps to execute
         """
+        # Add user message to history
+        self._add_to_history("user", user_message)
+
+        # Log context size
+        context_size = self._get_context_size()
+        logger.info(f"Current context size: ~{context_size} tokens")
+
         # Get tool schemas
         # tools = self.tool_registry.get_all_schemas()
         # tools_json = json.dumps(tools, indent=2)
@@ -174,8 +217,9 @@ class AgentPlanner:
         # Build planning prompt
         planning_prompt = PLANNING_PROMPT.format(user_message=user_message)
 
-        # Generate plan
-        messages = [
+        # Use conversation history for context
+        conversation_context = self._build_conversation_context()
+        messages = conversation_context + [
             {"role": "user", "content": planning_prompt}
         ]
 
@@ -305,13 +349,21 @@ class AgentPlanner:
         """
         # If no tools were executed, generate direct response
         if not results:
-            messages = [{"role": "user", "content": user_message}]
+            # Use conversation history for better context
+            conversation_context = self._build_conversation_context()
+            messages = conversation_context + [{"role": "user", "content": user_message}]
+
             response = await self.llm.complete_chat(
                 messages=messages,
                 temperature=0.3,
                 max_tokens=1024
             )
-            return response.content.strip()
+            assistant_response = response.content.strip()
+
+            # Add to history
+            self._add_to_history("assistant", assistant_response)
+
+            return assistant_response
 
         # Build synthesis prompt
         results_json = json.dumps([r.to_dict() for r in results], indent=2)
@@ -333,8 +385,11 @@ class AgentPlanner:
             content = response.content.strip() if response and response.content else ""
             
             if not content:
-                return "✓ Task completed successfully (No description provided by Agent)."
-                
+                content = "✓ Task completed successfully (No description provided by Agent)."
+
+            # Add to history
+            self._add_to_history("assistant", content)
+
             return content
 
         except Exception as e:
@@ -345,9 +400,12 @@ class AgentPlanner:
             total_count = len(results)
 
             if success_count == total_count:
-                return f"✓ Completed {total_count} operation(s) successfully."
+                fallback = f"✓ Completed {total_count} operation(s) successfully."
             else:
-                return f"Completed {success_count}/{total_count} operations. Some errors occurred."
+                fallback = f"Completed {success_count}/{total_count} operations. Some errors occurred."
+
+            self._add_to_history("assistant", fallback)
+            return fallback
 
     async def refine_plan(
         self,
