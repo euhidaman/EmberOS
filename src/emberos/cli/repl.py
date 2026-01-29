@@ -32,11 +32,11 @@ from emberos.cli.commands import CommandHandler
 # ASCII Art Banner
 BANNER = """
 ╭─────────────────────────────────────────────────────────────╮
-│  ███████ ███    ███ ██████  ███████ ██████   ██████  ███████│
-│  ██      ████  ████ ██   ██ ██      ██   ██ ██    ██ ██     │
-│  █████   ██ ████ ██ ██████  █████   ██████  ██    ██ ███████│
-│  ██      ██  ██  ██ ██   ██ ██      ██   ██ ██    ██      ██│
-│  ███████ ██      ██ ██████  ███████ ██   ██  ██████  ███████│
+│  ███████ ███    ███ ██████  ███████ ██████        ██████  ███████│
+│  ██      ████  ████ ██   ██ ██      ██   ██       ██    ██ ██     │
+│  █████   ██ ████ ██ ██████  █████   ██████  █████ ██    ██ ███████│
+│  ██      ██  ██  ██ ██   ██ ██      ██   ██       ██    ██      ██│
+│  ███████ ██      ██ ██████  ███████ ██   ██        ██████  ███████│
 ╰─────────────────────────────────────────────────────────────╯"""
 
 
@@ -89,18 +89,16 @@ class EmberREPL:
         if connected:
             # Get status info
             try:
-                model_name = await self.client.get_model_name()
                 tools_count = len(await self.client.list_tools())
 
                 self.console.print(
-                    f"  [bold]EmberOS Terminal[/bold] v{APP_VERSION} · "
+                    f"  [bold]Ember-OS Terminal[/bold] v{APP_VERSION} · "
                     f"[green]Connected[/green] · "
-                    f"{model_name} · "
                     f"{tools_count} tools"
                 )
             except Exception:
                 self.console.print(
-                    f"  [bold]EmberOS Terminal[/bold] v{APP_VERSION} · "
+                    f"  [bold]Ember-OS Terminal[/bold] v{APP_VERSION} · "
                     f"[green]Connected[/green]"
                 )
 
@@ -111,7 +109,7 @@ class EmberREPL:
             self.client.on("confirmation", self._on_confirmation)
         else:
             self.console.print(
-                f"  [bold]EmberOS Terminal[/bold] v{APP_VERSION} · "
+                f"  [bold]Ember-OS Terminal[/bold] v{APP_VERSION} · "
                 f"[yellow]Offline Mode[/yellow] (daemon not running)"
             )
             self.offline_client = OfflineClient()
