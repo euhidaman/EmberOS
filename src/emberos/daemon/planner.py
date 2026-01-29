@@ -139,7 +139,7 @@ class AgentPlanner:
         self.tool_registry = tool_registry
         # Conversation history for context (sliding window)
         self._conversation_history: list[dict] = []
-        self._max_history_turns = 8  # Keep last 8 turns (4 user + 4 assistant)
+        self._max_history_turns = 50  # Keep last 50 turns (25 user + 25 assistant) - much longer context
 
     def _add_to_history(self, role: str, content: str) -> None:
         """Add a message to conversation history with sliding window."""
@@ -164,7 +164,7 @@ class AgentPlanner:
     def _build_conversation_context(self) -> list[dict]:
         """Build conversation context from history."""
         context_size = self._get_context_size()
-        if context_size > 3000:
+        if context_size > 15000:  # Increased from 3000 to 15000 for longer conversations
             logger.warning(f"Context size is {context_size} tokens - this may cause slowdowns")
 
         return self._conversation_history.copy()

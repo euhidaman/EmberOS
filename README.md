@@ -1,8 +1,8 @@
-# EmberOS
+# Ember-OS
 
 **An AI-native layer for Linux and Windows that transforms your system into an agentic OS where every interaction flows through an intelligent, private AI agent.**
 
-> **Note:** EmberOS is not an application—it is an AI-native layer of the operating system itself. Every decision is logged and explainable, and no data ever leaves your machine.
+> **Note:** Ember-OS is not an application—it is an AI-native layer of the operating system itself. Every decision is logged and explainable, and no data ever leaves your machine.
 
 ---
 

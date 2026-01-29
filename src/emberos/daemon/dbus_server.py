@@ -252,6 +252,17 @@ class EmberAgentInterface(ServiceInterface):
         return json.dumps(tools)
 
     @method()
+    def ClearHistory(self) -> 's':
+        """Clear conversation history in planner."""
+        try:
+            self.daemon.planner.clear_history()
+            logger.info("Conversation history cleared via D-Bus")
+            return json.dumps({"success": True, "message": "History cleared"})
+        except Exception as e:
+            logger.exception(f"Error clearing history: {e}")
+            return json.dumps({"success": False, "error": str(e)})
+
+    @method()
     def GetToolSchema(self, tool_name: 's') -> 's':
         """Get schema for a specific tool."""
         schema = self.daemon.tool_registry.get_schema(tool_name)

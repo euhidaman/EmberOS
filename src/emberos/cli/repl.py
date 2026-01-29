@@ -5,6 +5,7 @@ EmberOS REPL - Interactive terminal interface.
 from __future__ import annotations
 
 import asyncio
+import logging
 import sys
 from typing import Optional
 
@@ -28,6 +29,8 @@ from emberos.core.constants import (
 )
 from emberos.cli.client import EmberClient, OfflineClient, TaskUpdate
 from emberos.cli.commands import CommandHandler
+
+logger = logging.getLogger(__name__)
 
 # ASCII Art Banner
 BANNER = """
@@ -156,10 +159,18 @@ class EmberREPL:
                 if not text:
                     continue
 
+                # Handle exit commands (exit, Exit, quit, q)
+                if text.lower() in ('exit', 'quit', 'q'):
+                    self.console.print("[yellow]Clearing conversation history and exiting...[/yellow]")
+                    await self._clear_conversation_history()
+                    break
+
                 # Handle built-in commands
                 if self.command_handler.is_command(text):
                     should_continue = await self.command_handler.execute(text)
                     if not should_continue:
+                        # Clear history on exit
+                        await self._clear_conversation_history()
                         break
                     continue
 
@@ -167,14 +178,26 @@ class EmberREPL:
                 await self._process_command(text)
 
             except KeyboardInterrupt:
-                self.console.print("\n[dim]Use :quit to exit[/dim]")
+                self.console.print("\n[dim]Interrupted. Type 'exit' or 'quit' to clear history and exit.[/dim]")
                 continue
             except EOFError:
+                self.console.print("[yellow]Clearing conversation history and exiting...[/yellow]")
+                await self._clear_conversation_history()
                 break
             except Exception as e:
                 self.console.print(f"[red]Error: {e}[/red]")
 
         await self.stop()
+
+    async def _clear_conversation_history(self) -> None:
+        """Clear conversation history in daemon."""
+        if self.client and self.client.is_connected:
+            try:
+                # Call daemon to clear planner history
+                await self.client.call_method("ClearHistory", {})
+                self.console.print("[dim]✓ Conversation history cleared[/dim]")
+            except Exception as e:
+                logger.debug(f"Could not clear history: {e}")
 
     async def _process_command(self, text: str) -> None:
         """Process a natural language command."""
