@@ -23,19 +23,21 @@
 
 ## ⚡ Performance Architecture
 
-EmberOS uses **two specialized models** for optimal speed:
+**Current Configuration:** EmberOS currently uses **Qwen2.5-VL-7B** for all tasks (text + vision).
 
-| Model | Port | Purpose | Speed | Size |
-|-------|------|---------|-------|------|
-| **BitNet b1.58-2B** | 8080 | Fast text tasks | 5-15 tok/s | ~1GB |
-| **Qwen2.5-VL-7B** | 11434 | Vision + complex | 2-5 tok/s | ~4GB |
+| Model | Port | Purpose | Speed | Size | Status |
+|-------|------|---------|-------|------|--------|
+| **BitNet b1.58-2B** | 38080 | Fast text tasks | 5-15 tok/s | ~1GB | ⚠️ Disabled* |
+| **Qwen2.5-VL-7B** | 11434 | All tasks | 2-5 tok/s | ~4GB | ✅ Active |
 
-### Smart Model Routing
+**\*BitNet Note:** Standard llama.cpp doesn't support BitNet's 1.58-bit quantization format. BitNet is disabled until a compatible llama-server build is available. The system automatically falls back to using Qwen2.5-VL for all tasks.
+
+### Smart Model Routing (When Both Active)
 - **Text-only queries** → BitNet (spreadsheets, documents, file ops)
 - **Visual content** → Qwen2.5-VL (images, PDFs, screenshots)
 - **Automatic fallback** if one model unavailable
 
-**Result:** 3-5x faster for most tasks compared to using vision model alone!
+**Current Performance:** Qwen2.5-VL handles all tasks reliably at 2-5 tokens/second.
 
 ---
 
@@ -57,37 +59,37 @@ git clone https://github.com/emberos/emberos
 cd emberos
 ./install.sh
 
-# 2. Install llama.cpp (handles both models)
+# 2. Install llama.cpp (handles model inference)
 yay -S llama.cpp
 
-# 3. That's it! The installer downloads both models automatically.
-#    If you need to download manually:
-
-# Download BitNet (text model)
+# 3. Download Qwen2.5-VL model (required)
 source ~/.local/share/ember/venv/bin/activate
 pip install huggingface-hub
-huggingface-cli download microsoft/bitnet-b1.58-2B-4T-gguf \
-  ggml-model-i2_s.gguf \
-  --local-dir /tmp/bitnet \
-  --local-dir-use-symlinks False
-sudo mkdir -p /usr/local/share/ember/models/bitnet
-sudo mv /tmp/bitnet/ggml-model-i2_s.gguf /usr/local/share/ember/models/bitnet/
 
-# Download Qwen2.5-VL (vision model)
 huggingface-cli download unsloth/Qwen2.5-VL-7B-Instruct-GGUF \
   Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf \
   --local-dir /tmp/qwen
+sudo mkdir -p /usr/local/share/ember/models
 sudo mv /tmp/qwen/Qwen2.5-VL-7B-Instruct-Q4_K_M.gguf \
   /usr/local/share/ember/models/qwen2.5-vl-7b-instruct-q4_k_m.gguf
+
+# Optional: Download BitNet model (currently not supported by standard llama-server)
+# huggingface-cli download microsoft/bitnet-b1.58-2B-4T-gguf \
+#   ggml-model-i2_s.gguf \
+#   --local-dir /tmp/bitnet \
+#   --local-dir-use-symlinks False
+# sudo mkdir -p /usr/local/share/ember/models/bitnet
+# sudo mv /tmp/bitnet/ggml-model-i2_s.gguf /usr/local/share/ember/models/bitnet/
+
 deactivate
 
-# 4. Start services (single service manages both models)
+# 4. Start services
 systemctl --user daemon-reload
 systemctl --user enable --now ember-llm emberd
 
 # 5. Verify and launch
 systemctl --user status ember-llm emberd
-curl http://127.0.0.1:38080/health && curl http://127.0.0.1:11434/health
+curl http://127.0.0.1:11434/health
 ember-ui  # or: ember
 ```
 
