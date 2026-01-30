@@ -837,10 +837,16 @@ Now analyze: "{text}"
         if any(indicator in normalized for indicator in create_indicators) and has_content_request:
             import re
 
-            # Extract the topic
+            logger.info(f"[PLANNER] Detected content creation request: '{normalized}'")
+
+            # Extract the topic - use multiple strategies
             topic_patterns = [
-                r"(?:about|explaining|regarding|describing)\s+(.+?)(?:\s+(?:called|named|in|$))",
-                r"(?:on|of)\s+(?:the\s+topic\s+of\s+)?(.+?)(?:\s+(?:called|named|in|$))",
+                # "about X" where X can be anything until end of string or location keywords
+                r"(?:about|regarding|describing)\s+(.+?)(?:\s+(?:called|named|in|to|at|$))",
+                # "explaining X"
+                r"explaining\s+(.+?)(?:\s+(?:called|named|in|to|at|$))",
+                # "on the topic of X"
+                r"(?:on|of)\s+(?:the\s+topic\s+of\s+)?(.+?)(?:\s+(?:called|named|in|to|at|$))",
             ]
 
             topic = None
@@ -848,9 +854,20 @@ Now analyze: "{text}"
                 match = re.search(pattern, normalized, re.IGNORECASE)
                 if match:
                     topic = match.group(1).strip()
+                    logger.info(f"[PLANNER] Extracted topic using pattern '{pattern}': '{topic}'")
                     # Clean up common endings
                     topic = re.sub(r"\s+(file|document|txt|md|markdown|word|pdf)$", "", topic, flags=re.IGNORECASE)
                     break
+
+            # Fallback: if no topic found but has "about", extract everything after "about"
+            if not topic:
+                fallback_match = re.search(r"(?:about|regarding|describing)\s+(.+)$", normalized, re.IGNORECASE)
+                if fallback_match:
+                    topic = fallback_match.group(1).strip()
+                    # Remove file type keywords from topic
+                    topic = re.sub(r"^(txt|md|markdown|pdf|docx|doc|word)\s+", "", topic, flags=re.IGNORECASE)
+                    topic = re.sub(r"\s+(file|document|txt|md|markdown|word|pdf)$", "", topic, flags=re.IGNORECASE)
+                    logger.info(f"[PLANNER] Fallback topic extraction: '{topic}'")
 
             if topic:
                 # Determine file format
