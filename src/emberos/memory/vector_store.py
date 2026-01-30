@@ -38,9 +38,17 @@ class VectorStore:
         try:
             import chromadb
             from chromadb.config import Settings
+            import os
 
             # Ensure directory exists
             self.db_path.mkdir(parents=True, exist_ok=True)
+
+            # Set cache directory to our writable data path (not /home/user/.cache)
+            cache_dir = self.db_path / ".cache"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+
+            # Set CHROMA_CACHE_DIR environment variable
+            os.environ["CHROMA_CACHE_DIR"] = str(cache_dir)
 
             # Initialize ChromaDB
             self._client = chromadb.PersistentClient(
