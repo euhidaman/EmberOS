@@ -220,12 +220,13 @@ CLASSIFICATION RULES:
 
 1. SYSTEM_TASK (needs tools):
    - File/folder operations: list, create, delete, move, copy, rename, search, find
+   - Directory listing: "what files in [folder]", "show files", "list folders", "files are in [location]"
    - File content reading: "what's in [file]", "read [file]", "open [file]", "show contents of [file]", "summarize [file]"
    - System queries: current directory, disk space, processes, system info
    - Location queries: "where are you", "which folder", "current location", "where am I"
    - Keywords: file, folder, directory, downloads, documents, desktop, create, delete, open, read, write, where (location context)
    - File extensions: .txt, .pdf, .docx, .doc, .md (always system_task)
-   - Examples: "show files", "create folder", "what's in downloads", "where are you", "current directory", "what's in file.txt", "read report.pdf"
+   - Examples: "show files", "create folder", "what's in downloads", "where are you", "current directory", "what's in file.txt", "read report.pdf", "what files are present in Desktop"
 
 2. CONVERSATION (no tools):
    - General knowledge: "what is X", "explain Y", "how does Z work" (WITHOUT file extension)
@@ -371,6 +372,18 @@ CONFIDENCE: high
 
 Input: "what is in meeting_notes.txt"
 CORRECTED: what is in meeting_notes.txt
+TYPE: system_task
+TOOLS: yes
+CONFIDENCE: high
+
+Input: "what files are present in Desktop"
+CORRECTED: what files are present in Desktop
+TYPE: system_task
+TOOLS: yes
+CONFIDENCE: high
+
+Input: "show files in Downloads folder"
+CORRECTED: show files in Downloads folder
 TYPE: system_task
 TOOLS: yes
 CONFIDENCE: high
@@ -588,6 +601,14 @@ Now analyze: "{text}"
         file_read_indicators = ["what's in", "what is in", "read", "open", "show contents", "view", "summarize", "summarise"]
         is_file_read_request = has_file_extension and any(indicator in normalized for indicator in file_read_indicators)
 
+        # IMPORTANT: Also fast-path directory listing requests
+        # Check if this is asking about files/folders in a location
+        folder_indicators = ["what files", "what folders", "list files", "list folders", "show files", "show folders",
+                             "files in", "folders in", "files are", "folders are", "what's in", "what is in"]
+        folder_locations = ["desktop", "downloads", "documents", "pictures", "videos", "music", "folder", "directory"]
+        is_directory_list_request = (any(indicator in normalized for indicator in folder_indicators) and
+                                      any(location in normalized for location in folder_locations))
+
         # Initialize variables
         corrected_message = normalized
         intent_type = "unknown"
@@ -597,6 +618,12 @@ Now analyze: "{text}"
         if is_file_read_request:
             # This is clearly a file reading request - skip intent classification
             logger.info(f"[PLANNER] Detected file reading request (has extension + read indicator), skipping intent check")
+            intent_type = "system_task"
+            needs_tools = True
+            skip_intent_check = True
+        elif is_directory_list_request:
+            # This is clearly a directory listing request - skip intent classification
+            logger.info(f"[PLANNER] Detected directory listing request, skipping intent check")
             intent_type = "system_task"
             needs_tools = True
             skip_intent_check = True
