@@ -533,9 +533,16 @@ Now analyze: "{text}"
 
         normalized = user_message.strip().lower()
 
+        # Fast-path: detect content-creation requests before intent classification
+        create_indicators = ["create", "make", "new", "generate", "write"]
+        content_keywords = ["about", "explaining", "on the topic", "regarding", "describing"]
+        has_content_request = any(keyword in normalized for keyword in content_keywords)
+        force_content_flow = any(indicator in normalized for indicator in create_indicators) and has_content_request
+
         # Quick check: if message looks mostly correct, skip LLM intent check
         # This saves time for well-formed queries
         skip_intent_check = (
+            force_content_flow or
             len(normalized.split()) <= 2 or  # Very short
             normalized.startswith(':') or     # Command
             not any(c.isalpha() for c in normalized)  # No letters
@@ -545,7 +552,10 @@ Now analyze: "{text}"
         intent_type = "unknown"
         needs_tools = False
 
-        if not skip_intent_check:
+        if force_content_flow:
+            intent_type = "system_task"
+            needs_tools = True
+        elif not skip_intent_check:
             # Use LLM to understand intent and correct typos
             try:
                 corrected_message, intent_type, needs_tools = await self._understand_intent_with_llm(normalized)
