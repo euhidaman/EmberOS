@@ -193,210 +193,86 @@ class AgentPlanner:
         logger.info("Clearing conversation history")
         self._conversation_history = []
 
-    def _correct_typos(self, text: str) -> tuple[str, bool]:
+    async def _understand_intent_with_llm(self, text: str) -> tuple[str, str, bool]:
         """
-        Attempt to correct common typos and misspellings.
+        Use BitNet LLM to understand user intent and correct typos/errors.
 
         Returns:
-            Tuple of (corrected_text, was_corrected)
+            Tuple of (corrected_text, intent_type, needs_tools)
+            - corrected_text: Corrected/clarified version of user input
+            - intent_type: 'conversation' or 'system_task'
+            - needs_tools: True if requires filesystem/system tools
         """
-        original = text
-        corrected = text
+        # Very short prompt to minimize latency
+        intent_prompt = f"""User said: "{text}"
 
-        # Common word corrections (misspelling -> correct)
-        common_corrections = {
-            # Question words
-            "wat": "what", "waht": "what", "wht": "what", "whta": "what",
-            "wher": "where", "whre": "where", "wehre": "where", "whrere": "where",
-            "wich": "which", "whcih": "which", "whihc": "which",
-            "hwo": "how", "hw": "how", "howw": "how",
-            "whn": "when", "wehn": "when", "whne": "when",
-            "whi": "why", "whhy": "why",
+If there are typos/errors, correct them. Then classify the intent:
 
-            # Common verbs
-            "ar": "are", "aer": "are", "rae": "are",
-            "si": "is", "iss": "is",
-            "cna": "can", "acn": "can",
-            "cn": "can",
-            "woudl": "would", "wuold": "would", "wold": "would",
-            "cuold": "could", "coudl": "could", "coud": "could",
-            "shoudl": "should", "shuold": "should", "shoud": "should",
-            "hvae": "have", "ahve": "have", "hav": "have",
-            "dose": "does", "deos": "does",
-            "dont": "don't", "dnt": "don't", "donot": "do not",
-            "cant": "can't", "cnat": "can't", "cannot": "can not",
-            "wont": "won't",
-            "im": "i'm", "iam": "i am",
-            "youre": "you're", "your're": "you're",
-            "theyre": "they're", "thier": "their",
-            "teh": "the", "hte": "the", "th": "the",
+Respond in this exact format:
+CORRECTED: [corrected text]
+TYPE: [conversation|system_task]
+TOOLS: [yes|no]
 
-            # File system related
-            "fils": "files", "fiel": "file", "fiels": "files", "filles": "files",
-            "floder": "folder", "fodler": "folder", "foldr": "folder", "flder": "folder",
-            "direcotry": "directory", "directroy": "directory", "diretory": "directory",
-            "downlods": "downloads", "donwloads": "downloads", "downlaods": "downloads",
-            "documets": "documents", "docuemnts": "documents", "documetns": "documents",
-            "destop": "desktop", "dekstop": "desktop", "destkop": "desktop",
-            "picutres": "pictures", "picturs": "pictures", "pictrues": "pictures",
-            "vdieos": "videos", "vidoes": "videos", "viedos": "videos",
-            "muisc": "music", "musc": "music", "musci": "music",
+Examples:
+User: "where ar you?"
+CORRECTED: where are you?
+TYPE: conversation
+TOOLS: no
 
-            # Actions
-            "crate": "create", "craete": "create", "creat": "create",
-            "delte": "delete", "deleet": "delete", "delet": "delete",
-            "remvoe": "remove", "reomve": "remove", "remov": "remove",
-            "mvoe": "move", "moev": "move",
-            "cpoy": "copy", "coyp": "copy",
-            "serach": "search", "seach": "search", "saerch": "search",
-            "fnd": "find", "fidn": "find", "fnid": "find",
-            "opne": "open", "oepn": "open",
-            "lsit": "list", "lits": "list", "lis": "list",
-            "shwo": "show", "hsow": "show", "sohw": "show",
-            "raed": "read", "reda": "read",
-            "wrtie": "write", "wirte": "write", "writ": "write",
-            "renam": "rename", "renaem": "rename",
-            "orgnaize": "organize", "organzie": "organize", "oragnize": "organize",
+User: "shwo files in downlods"
+CORRECTED: show files in downloads
+TYPE: system_task
+TOOLS: yes
 
-            # Common nouns
-            "spredsheet": "spreadsheet", "spreadhseet": "spreadsheet", "spreadshet": "spreadsheet",
-            "bduget": "budget", "budegt": "budget",
-            "systme": "system", "sysetm": "system", "sysem": "system",
-            "procss": "process", "porcess": "process",
-            "memroy": "memory", "memoyr": "memory",
-            "infromation": "information", "informaiton": "information", "info": "information",
+User: "wat is a circle"
+CORRECTED: what is a circle
+TYPE: conversation
+TOOLS: no
 
-            # Pronouns
-            "yuo": "you", "yoi": "you", "uyo": "you",
-            "i": "I",  # Capitalize I
-            "mee": "me", "em": "me",
-            "thsi": "this", "htis": "this", "tihs": "this",
-            "taht": "that", "htat": "that",
-            "thees": "these", "tehse": "these",
-            "tehre": "there", "theer": "there", "ther": "there",
-            "heer": "here", "hre": "here", "hrer": "here",
+Now analyze the user's input above."""
 
-            # Misc
-            "abuot": "about", "abotu": "about", "baout": "about",
-            "wiht": "with", "wtih": "with", "iwth": "with",
-            "fomr": "from", "form": "from", "frm": "from",
-            "anythign": "anything", "anythin": "anything",
-            "somethign": "something", "somethin": "something",
-            "nothign": "nothing", "nothin": "nothing",
-            "plase": "please", "pls": "please", "plz": "please",
-            "thnk": "think", "thikn": "think",
-            "knwo": "know", "konw": "know", "kno": "know",
-            "becuase": "because", "becasue": "because", "bcause": "because",
-        }
+        try:
+            # Use BitNet with very short timeout
+            response = await self.llm.complete_chat(
+                messages=[{"role": "user", "content": intent_prompt}],
+                temperature=0.1,
+                max_tokens=100  # Keep it very short
+            )
 
-        # Apply word-level corrections
-        words = corrected.split()
-        corrected_words = []
+            if not response or not response.content:
+                # Fallback to original
+                return text, "conversation", False
 
-        for word in words:
-            # Check if word needs correction
-            clean_word = word.strip(".,?!;:'\"")
-            punctuation = word[len(clean_word):] if len(word) > len(clean_word) else ""
+            content = response.content.strip()
 
-            if clean_word in common_corrections:
-                corrected_words.append(common_corrections[clean_word] + punctuation)
-            else:
-                corrected_words.append(word)
+            # Parse the response
+            corrected = text
+            intent_type = "conversation"
+            needs_tools = False
 
-        corrected = " ".join(corrected_words)
+            for line in content.split('\n'):
+                line = line.strip()
+                if line.startswith('CORRECTED:'):
+                    corrected = line.replace('CORRECTED:', '').strip()
+                elif line.startswith('TYPE:'):
+                    intent_type = line.replace('TYPE:', '').strip()
+                elif line.startswith('TOOLS:'):
+                    needs_tools = line.replace('TOOLS:', '').strip().lower() == 'yes'
 
-        # Fix common phrase patterns
-        phrase_corrections = [
-            # "where ar you" -> "where are you"
-            (r"\bwhere\s+ar\s+you\b", "where are you"),
-            (r"\bwhat\s+ar\s+you\b", "what are you"),
-            (r"\bwho\s+ar\s+you\b", "who are you"),
-            (r"\bhow\s+ar\s+you\b", "how are you"),
-            # "wat can you do" -> "what can you do"
-            (r"\bwat\s+can\b", "what can"),
-            (r"\bwat\s+is\b", "what is"),
-            (r"\bwat\s+are\b", "what are"),
-            # Double letters
-            (r"\bhelllo\b", "hello"),
-            (r"\bhiii\b", "hi"),
-            # Missing spaces
-            (r"\bwhatis\b", "what is"),
-            (r"\bwhereis\b", "where is"),
-            (r"\bhowto\b", "how to"),
-            (r"\bcantyou\b", "can't you"),
-            (r"\bdoyou\b", "do you"),
-            (r"\bcanyou\b", "can you"),
-            # "u" as "you"
-            (r"\bu\b", "you"),
-            (r"\br\b", "are"),
-            (r"\by\b", "why"),
-        ]
+            logger.info(f"[PLANNER] Intent: '{text}' -> '{corrected}' (type={intent_type}, tools={needs_tools})")
 
-        import re
-        for pattern, replacement in phrase_corrections:
-            corrected = re.sub(pattern, replacement, corrected, flags=re.IGNORECASE)
+            # Return results
+            was_corrected = (corrected.lower() != text.lower())
+            return corrected, intent_type, needs_tools
 
-        was_corrected = (corrected != original)
-        return corrected, was_corrected
-
-    def _is_too_garbled(self, text: str) -> bool:
-        """
-        Check if the text is too garbled to understand.
-
-        Returns True if we should ask the user to rephrase.
-        """
-        # Very short messages are usually fine
-        if len(text) < 5:
-            return False
-
-        words = text.split()
-
-        # If message has very few recognizable words, it's garbled
-        # Check against a list of common English words
-        common_words = {
-            "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-            "have", "has", "had", "do", "does", "did", "will", "would", "could",
-            "should", "may", "might", "must", "can", "shall",
-            "i", "you", "he", "she", "it", "we", "they", "me", "him", "her", "us", "them",
-            "my", "your", "his", "its", "our", "their", "mine", "yours", "ours", "theirs",
-            "this", "that", "these", "those", "what", "which", "who", "whom", "whose",
-            "where", "when", "why", "how",
-            "and", "or", "but", "if", "then", "else", "because", "so", "for", "nor",
-            "in", "on", "at", "to", "from", "by", "with", "about", "into", "through",
-            "not", "no", "yes", "here", "there", "now", "then",
-            "all", "some", "any", "many", "much", "more", "most", "few", "less", "least",
-            "just", "only", "also", "very", "too", "quite", "really", "still",
-            "new", "old", "good", "bad", "great", "first", "last", "long", "short",
-            "file", "files", "folder", "folders", "directory", "desktop", "downloads",
-            "documents", "pictures", "videos", "music", "home",
-            "create", "delete", "move", "copy", "rename", "find", "search", "list",
-            "show", "open", "read", "write", "help", "please", "thanks",
-            "hello", "hi", "hey", "bye", "ok", "okay", "sure", "yes", "no",
-        }
-
-        # Count recognizable words
-        recognizable_count = 0
-        for word in words:
-            clean_word = word.strip(".,?!;:'\"").lower()
-            if clean_word in common_words or len(clean_word) <= 2:
-                recognizable_count += 1
-
-        # If less than 30% of words are recognizable, it's garbled
-        if len(words) > 3 and recognizable_count / len(words) < 0.3:
-            return True
-
-        # Check for excessive repeated characters (like "aaaaaaaa")
-        import re
-        if re.search(r'(.)\1{4,}', text):  # 5+ repeated chars
-            return True
-
-        # Check for no vowels (likely keyboard mashing)
-        vowels = set('aeiouAEIOU')
-        has_vowel = any(c in vowels for c in text if c.isalpha())
-        if len(text) > 5 and not has_vowel:
-            return True
-
-        return False
+        except Exception as e:
+            logger.warning(f"[PLANNER] Intent understanding failed: {e}, using original text")
+            # Fallback: assume conversation if no clear system indicators
+            needs_tools = any(word in text.lower() for word in [
+                'file', 'folder', 'directory', 'create', 'delete', 'list', 'show',
+                'download', 'document', 'desktop'
+            ])
+            return text, "system_task" if needs_tools else "conversation", needs_tools
 
     async def create_plan(
         self,
@@ -417,31 +293,58 @@ class AgentPlanner:
         self._add_to_history("user", user_message)
 
         # =====================================================
-        # STEP 0: TYPO CORRECTION AND FUZZY MATCHING
-        # Attempt to understand user intent despite typos/misspellings
+        # STEP 0: INTELLIGENT INTENT UNDERSTANDING
+        # Use BitNet to understand intent and correct typos
         # =====================================================
 
-        original_message = user_message
         normalized = user_message.strip().lower()
 
-        # Apply typo corrections
-        corrected_message, was_corrected = self._correct_typos(normalized)
-        if was_corrected:
-            logger.info(f"[PLANNER] Corrected typos: '{normalized}' -> '{corrected_message}'")
-            normalized = corrected_message
+        # Quick check: if message looks mostly correct, skip LLM intent check
+        # This saves time for well-formed queries
+        skip_intent_check = (
+            len(normalized.split()) <= 2 or  # Very short
+            normalized.startswith(':') or     # Command
+            not any(c.isalpha() for c in normalized)  # No letters
+        )
 
-        # Check if message is too garbled to understand
-        if self._is_too_garbled(normalized):
-            logger.warning(f"[PLANNER] Message too garbled to understand: '{original_message}'")
+        corrected_message = normalized
+        intent_type = "unknown"
+        needs_tools = False
+
+        if not skip_intent_check:
+            # Use LLM to understand intent and correct typos
+            try:
+                corrected_message, intent_type, needs_tools = await self._understand_intent_with_llm(normalized)
+
+                # If corrected significantly, log it
+                if corrected_message.lower() != normalized.lower():
+                    logger.info(f"[PLANNER] Corrected: '{normalized}' -> '{corrected_message}'")
+                    normalized = corrected_message.lower()
+
+            except Exception as e:
+                logger.warning(f"[PLANNER] Intent understanding failed: {e}, using heuristics")
+                # Fallback to simple heuristics
+                needs_tools = any(word in normalized for word in [
+                    'file', 'folder', 'directory', 'create', 'delete', 'list', 'show',
+                    'download', 'document', 'desktop', 'find', 'search', 'open'
+                ])
+                intent_type = "system_task" if needs_tools else "conversation"
+
+        # =====================================================
+        # STEP 1: ROUTE BASED ON INTENT
+        # =====================================================
+
+        # If intent is clearly conversational and needs no tools, return empty plan
+        if intent_type == "conversation" and not needs_tools:
             return ExecutionPlan(
-                reasoning="Message unclear - ask user to rephrase.",
+                reasoning="Conversational query - respond directly without tools.",
                 steps=[],
                 requires_confirmation=False
             )
 
         # =====================================================
-        # STEP 1: DIRECT RESPONSE QUERIES (NO TOOLS NEEDED)
-        # These are general knowledge or identity questions
+        # STEP 2: FILESYSTEM CRUD RULE-BASED ROUTING
+        # These require tools to interact with the system
         # =====================================================
 
         # --- IDENTITY QUESTIONS ---
@@ -515,6 +418,8 @@ class AgentPlanner:
         # =====================================================
         # STEP 2: FILESYSTEM CRUD RULE-BASED ROUTING
         # These require tools to interact with the system
+        # Note: We still keep these fast-path rules for common queries
+        # to avoid unnecessary LLM calls
         # =====================================================
 
         # --- WORKING DIRECTORY ---
@@ -1014,11 +919,6 @@ class AgentPlanner:
         Returns:
             Natural language response for the user
         """
-        # Check if this was a "garbled message" plan
-        if plan.reasoning == "Message unclear - ask user to rephrase.":
-            response = "I'm not quite sure what you meant. Could you please rephrase your question?"
-            self._add_to_history("assistant", response)
-            return response
 
         # If no tools were executed, generate direct response from LLM
         if not results:
