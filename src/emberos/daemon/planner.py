@@ -1354,11 +1354,12 @@ Now analyze: "{text}"
                     # Ensure directory exists
                     os.makedirs(target_dir, exist_ok=True)
 
-                    # Write to txt/md files directly
+                    # Write to different file formats
                     extension = os.path.splitext(filepath_expanded)[1].lower()
 
-                    if extension in ['.txt', '.md']:
-                        try:
+                    try:
+                        if extension in ['.txt', '.md']:
+                            # Plain text and Markdown
                             with open(filepath_expanded, 'w', encoding='utf-8') as f:
                                 if extension == '.md':
                                     f.write(f"# {topic.title()}\n\n")
@@ -1367,33 +1368,154 @@ Now analyze: "{text}"
                             logger.info(f"[PLANNER] File written successfully: {filepath_expanded}")
                             response_msg = f"Created {format_type.upper()} document: {filepath}\n\nContent preview:\n{content[:200]}..."
 
-                        except OSError as e:
-                            if e.errno == 30:  # Read-only file system
-                                logger.warning("[PLANNER] Target directory is read-only, writing to Ember data dir instead")
+                        elif extension == '.pdf':
+                            # PDF creation using reportlab
+                            try:
+                                from reportlab.lib.pagesizes import letter
+                                from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+                                from reportlab.lib.units import inch
+                                from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+                                from reportlab.lib.enums import TA_JUSTIFY
 
-                                # Write to Ember data directory as fallback (always writable)
-                                ember_data_dir = os.path.expanduser("~/.local/share/ember")
-                                os.makedirs(ember_data_dir, exist_ok=True)
-                                temp_path = os.path.join(ember_data_dir, os.path.basename(filepath_expanded))
+                                doc = SimpleDocTemplate(filepath_expanded, pagesize=letter)
+                                styles = getSampleStyleSheet()
+                                story = []
 
+                                # Title
+                                title_style = ParagraphStyle(
+                                    'CustomTitle',
+                                    parent=styles['Heading1'],
+                                    fontSize=18,
+                                    spaceAfter=30,
+                                )
+                                story.append(Paragraph(topic.title(), title_style))
+                                story.append(Spacer(1, 0.2 * inch))
+
+                                # Content - split into paragraphs
+                                body_style = ParagraphStyle(
+                                    'CustomBody',
+                                    parent=styles['BodyText'],
+                                    fontSize=11,
+                                    alignment=TA_JUSTIFY,
+                                    spaceAfter=12,
+                                )
+
+                                for paragraph in content.split('\n\n'):
+                                    if paragraph.strip():
+                                        story.append(Paragraph(paragraph.strip(), body_style))
+                                        story.append(Spacer(1, 0.1 * inch))
+
+                                doc.build(story)
+                                logger.info(f"[PLANNER] PDF written successfully: {filepath_expanded}")
+                                response_msg = f"Created PDF document: {filepath}\n\nContent preview:\n{content[:200]}..."
+
+                            except ImportError:
+                                logger.error("[PLANNER] reportlab not installed, cannot create PDF")
+                                response_msg = (
+                                    f"Cannot create PDF: reportlab library not installed.\n\n"
+                                    f"Install with: pip install reportlab\n"
+                                    f"Or install with documents support: pip install -e .[documents]"
+                                )
+
+                        elif extension == '.docx':
+                            # DOCX creation using python-docx
+                            try:
+                                from docx import Document
+                                from docx.shared import Pt, Inches
+
+                                doc = Document()
+
+                                # Title
+                                title = doc.add_heading(topic.title(), 0)
+                                title.alignment = 1  # Center alignment
+
+                                # Add some space
+                                doc.add_paragraph()
+
+                                # Content - split into paragraphs
+                                for paragraph in content.split('\n\n'):
+                                    if paragraph.strip():
+                                        p = doc.add_paragraph(paragraph.strip())
+                                        p.alignment = 3  # Justify
+                                        p_format = p.paragraph_format
+                                        p_format.space_after = Pt(12)
+
+                                doc.save(filepath_expanded)
+                                logger.info(f"[PLANNER] DOCX written successfully: {filepath_expanded}")
+                                response_msg = f"Created Word document: {filepath}\n\nContent preview:\n{content[:200]}..."
+
+                            except ImportError:
+                                logger.error("[PLANNER] python-docx not installed, cannot create DOCX")
+                                response_msg = (
+                                    f"Cannot create Word document: python-docx library not installed.\n\n"
+                                    f"Install with: pip install python-docx\n"
+                                    f"Or install with documents support: pip install -e .[documents]"
+                                )
+
+                        else:
+                            response_msg = f"Sorry, .{extension} format is not supported. I can create TXT, Markdown, PDF, and Word documents."
+
+                    except OSError as e:
+                        if e.errno == 30:  # Read-only file system
+                            logger.warning("[PLANNER] Target directory is read-only, writing to Ember data dir instead")
+
+                            # Write to Ember data directory as fallback (always writable)
+                            ember_data_dir = os.path.expanduser("~/.local/share/ember")
+                            os.makedirs(ember_data_dir, exist_ok=True)
+                            temp_path = os.path.join(ember_data_dir, os.path.basename(filepath_expanded))
+
+                            # Try again with fallback path
+                            if extension in ['.txt', '.md']:
                                 with open(temp_path, 'w', encoding='utf-8') as f:
                                     if extension == '.md':
                                         f.write(f"# {topic.title()}\n\n")
                                     f.write(content)
+                            elif extension == '.pdf':
+                                # Recreate PDF at fallback location
+                                from reportlab.lib.pagesizes import letter
+                                from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+                                from reportlab.lib.units import inch
+                                from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+                                from reportlab.lib.enums import TA_JUSTIFY
 
-                                logger.info(f"[PLANNER] File written to fallback location: {temp_path}")
-                                response_msg = (
-                                    f"WARNING: I could not write to '{filepath_expanded}'.\n\n"
-                                    f"I created the document at: {temp_path}\n\n"
-                                    f"If you want it in Downloads, move it with:\n"
-                                    f"mv '{temp_path}' '{filepath_expanded}'\n\n"
-                                    f"Content preview:\n{content[:200]}..."
-                                )
-                            else:
-                                raise  # Re-raise if it's a different error
-                    else:
-                        # For docx and pdf, we need proper tool support
-                        response_msg = f"Sorry, creating {format_type.upper()} files is not yet fully supported. I can create TXT and Markdown files. Would you like me to create a .txt or .md file instead?"
+                                doc = SimpleDocTemplate(temp_path, pagesize=letter)
+                                styles = getSampleStyleSheet()
+                                story = []
+                                title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=18, spaceAfter=30)
+                                story.append(Paragraph(topic.title(), title_style))
+                                story.append(Spacer(1, 0.2 * inch))
+                                body_style = ParagraphStyle('CustomBody', parent=styles['BodyText'], fontSize=11, alignment=TA_JUSTIFY, spaceAfter=12)
+                                for paragraph in content.split('\n\n'):
+                                    if paragraph.strip():
+                                        story.append(Paragraph(paragraph.strip(), body_style))
+                                        story.append(Spacer(1, 0.1 * inch))
+                                doc.build(story)
+                            elif extension == '.docx':
+                                # Recreate DOCX at fallback location
+                                from docx import Document
+                                from docx.shared import Pt, Inches
+                                doc = Document()
+                                title = doc.add_heading(topic.title(), 0)
+                                title.alignment = 1
+                                doc.add_paragraph()
+                                for paragraph in content.split('\n\n'):
+                                    if paragraph.strip():
+                                        p = doc.add_paragraph(paragraph.strip())
+                                        p.alignment = 3
+                                        p_format = p.paragraph_format
+                                        p_format.space_after = Pt(12)
+                                doc.save(temp_path)
+
+                            logger.info(f"[PLANNER] File written to fallback location: {temp_path}")
+                            response_msg = (
+                                f"WARNING: I could not write to '{filepath_expanded}'.\n\n"
+                                f"I created the document at: {temp_path}\n\n"
+                                f"If you want it in the original location, move it with:\n"
+                                f"mv '{temp_path}' '{filepath_expanded}'\n\n"
+                                f"Content preview:\n{content[:200]}..."
+                            )
+                        else:
+                            raise  # Re-raise if it's a different error
 
                     self._add_to_history("assistant", response_msg)
                     return response_msg
