@@ -485,7 +485,6 @@ Now analyze: "{text}"
         if self._pending_document_creation is not None:
             logger.info(f"[PLANNER] Found pending document creation: {self._pending_document_creation}")
             import re
-            import os
 
             normalized = user_message.strip().lower()
             doc_info = self._pending_document_creation
@@ -565,7 +564,6 @@ Now analyze: "{text}"
                 filename = f"{filename}{doc_info['file_ext']}"
 
             # Build full path
-            import os
             filepath = os.path.join(os.path.expanduser(location), filename)
 
             logger.info(f"[PLANNER] Document creation: topic='{doc_info['topic']}', file='{filepath}'")
