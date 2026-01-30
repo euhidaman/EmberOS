@@ -1342,13 +1342,38 @@ Now analyze: "{text}"
                     extension = os.path.splitext(filepath_expanded)[1].lower()
 
                     if extension in ['.txt', '.md']:
-                        with open(filepath_expanded, 'w', encoding='utf-8') as f:
-                            if extension == '.md':
-                                f.write(f"# {topic.title()}\n\n")
-                            f.write(content)
+                        try:
+                            with open(filepath_expanded, 'w', encoding='utf-8') as f:
+                                if extension == '.md':
+                                    f.write(f"# {topic.title()}\n\n")
+                                f.write(content)
 
-                        logger.info(f"[PLANNER] File written successfully: {filepath_expanded}")
-                        response_msg = f"Created {format_type.upper()} document: {filepath}\n\nContent preview:\n{content[:200]}..."
+                            logger.info(f"[PLANNER] File written successfully: {filepath_expanded}")
+                            response_msg = f"Created {format_type.upper()} document: {filepath}\n\nContent preview:\n{content[:200]}..."
+
+                        except OSError as e:
+                            if e.errno == 30:  # Read-only file system
+                                logger.warning(f"[PLANNER] Target directory is read-only, writing to /tmp instead")
+
+                                # Write to /tmp as fallback
+                                import tempfile
+                                temp_path = os.path.join('/tmp', os.path.basename(filepath_expanded))
+
+                                with open(temp_path, 'w', encoding='utf-8') as f:
+                                    if extension == '.md':
+                                        f.write(f"# {topic.title()}\n\n")
+                                    f.write(content)
+
+                                logger.info(f"[PLANNER] File written to temporary location: {temp_path}")
+                                response_msg = (
+                                    f"WARNING: Your filesystem is mounted as read-only!\n\n"
+                                    f"I created the document at: {temp_path}\n\n"
+                                    f"To fix this, run: sudo mount -o remount,rw /home\n\n"
+                                    f"Then move the file with: mv {temp_path} {filepath_expanded}\n\n"
+                                    f"Content preview:\n{content[:200]}..."
+                                )
+                            else:
+                                raise  # Re-raise if it's a different error
                     else:
                         # For docx and pdf, we need proper tool support
                         response_msg = f"Sorry, creating {format_type.upper()} files is not yet fully supported. I can create TXT and Markdown files. Would you like me to create a .txt or .md file instead?"
