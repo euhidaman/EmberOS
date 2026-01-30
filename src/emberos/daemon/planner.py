@@ -219,16 +219,19 @@ CLASSIFICATION RULES:
 1. SYSTEM_TASK (needs tools):
    - File/folder operations: list, create, delete, move, copy, rename, search, find
    - System queries: current directory, disk space, processes, system info
-   - Keywords: file, folder, directory, downloads, documents, desktop, create, delete, open, read, write
-   - Examples: "show files", "create folder", "what's in downloads", "current directory"
+   - Location queries: "where are you", "which folder", "current location", "where am I"
+   - Keywords: file, folder, directory, downloads, documents, desktop, create, delete, open, read, write, where (location context)
+   - Examples: "show files", "create folder", "what's in downloads", "where are you", "current directory"
 
 2. CONVERSATION (no tools):
    - General knowledge: "what is X", "explain Y", "how does Z work"
-   - Identity: "who are you", "what are you", "what model"
+   - Identity (NOT location): "who are you", "what are you", "what model", "introduce yourself"
    - Math: "calculate", "what is 2+2"
    - Greetings: "hello", "hi", "thanks", "goodbye"
    - Opinion/advice: "should I", "what do you think"
-   - Examples: "what is gravity", "who are you", "calculate 5*3", "hello"
+   - Examples: "what is gravity", "who are you" (identity), "calculate 5*3", "hello"
+   
+   Note: "where are you" is system_task (location), not conversation (identity)
 
 3. UNCLEAR:
    - Completely garbled (>70% nonsense)
@@ -250,10 +253,15 @@ B. TYPOS & MISSPELLINGS:
    - Handle extra spaces: "show  files" → "show files"
    - Handle common shortcuts: "pls" → "please", "u" → "you", "r" → "are"
 
-C. MIXED INTENTS:
+C. MIXED INTENTS (PRIORITIZE SYSTEM TASKS):
    - "what files are in downloads and what is a circle" → system_task (prioritize actionable)
-   - "hello, list files" → system_task (ignore greeting)
+   - "hello, list files" → system_task (ignore greeting, focus on action)
+   - "hi, where are you?" → system_task (asking for current directory, not identity)
+   - "hey, show me files" → system_task (ignore greeting)
    - "can you create a folder and explain gravity" → system_task (prioritize action)
+   - "thanks, what's in my folder" → system_task (ignore acknowledgment)
+   
+   Rule: If ANY part asks for system info or file operations, classify as system_task
 
 D. CONTEXT-DEPENDENT:
    - "show me" → If previous context exists, use it. Otherwise: unclear
@@ -299,6 +307,18 @@ Input: "wat is a circle"
 CORRECTED: what is a circle
 TYPE: conversation
 TOOLS: no
+CONFIDENCE: high
+
+Input: "hi, where are you?"
+CORRECTED: hi, where are you?
+TYPE: system_task
+TOOLS: yes
+CONFIDENCE: high
+
+Input: "hello, what folder am i in"
+CORRECTED: hello, what folder am I in
+TYPE: system_task
+TOOLS: yes
 CONFIDENCE: high
 
 Input: "crete a floder"
