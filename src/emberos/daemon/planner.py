@@ -449,6 +449,7 @@ Now analyze: "{text}"
         if self._pending_document_creation is not None:
             logger.info(f"[PLANNER] Found pending document creation: {self._pending_document_creation}")
             import re
+            import os
 
             normalized = user_message.strip().lower()
             doc_info = self._pending_document_creation
