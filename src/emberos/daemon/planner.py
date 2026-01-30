@@ -1332,11 +1332,22 @@ Now analyze: "{text}"
 
                     # Now write the file
                     import os
+                    import stat
                     filepath_expanded = os.path.expanduser(filepath)
                     logger.info(f"[PLANNER] Writing to file: {filepath_expanded}")
 
+                    # Diagnostic: Check directory permissions
+                    target_dir = os.path.dirname(filepath_expanded)
+                    logger.info(f"[PLANNER] Target directory: {target_dir}")
+                    logger.info(f"[PLANNER] Directory exists: {os.path.exists(target_dir)}")
+
+                    if os.path.exists(target_dir):
+                        dir_stat = os.stat(target_dir)
+                        logger.info(f"[PLANNER] Directory permissions: {oct(dir_stat.st_mode)}")
+                        logger.info(f"[PLANNER] Directory writable: {os.access(target_dir, os.W_OK)}")
+
                     # Ensure directory exists
-                    os.makedirs(os.path.dirname(filepath_expanded), exist_ok=True)
+                    os.makedirs(target_dir, exist_ok=True)
 
                     # Write to txt/md files directly
                     extension = os.path.splitext(filepath_expanded)[1].lower()
