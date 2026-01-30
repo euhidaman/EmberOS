@@ -162,6 +162,7 @@ class AgentPlanner:
         self._max_history_turns = 50  # Keep last 50 turns (25 user + 25 assistant) - much longer context
         # State tracking for multi-step operations
         self._pending_document_creation: Optional[dict] = None  # Stores {topic, format, file_ext}
+        self._pending_file_operation: Optional[dict] = None  # Stores {type, path, original_query}
 
     def _add_to_history(self, role: str, content: str) -> None:
         """Add a message to conversation history with sliding window."""
@@ -221,13 +222,14 @@ CLASSIFICATION RULES:
 
 1. SYSTEM_TASK (needs tools):
    - File/folder operations: list, create, delete, move, copy, rename, search, find
+   - Common typos: "delte", "dtle", "deleat", "shwo", "lsit", "downlods"
    - Directory listing: "what files in [folder]", "show files", "list folders", "files are in [location]"
    - File content reading: "what's in [file]", "read [file]", "open [file]", "show contents of [file]", "summarize [file]", "summarise [file]"
    - System queries: current directory, disk space, processes, system info
    - Location queries: "where are you", "which folder", "current location", "where am I"
    - Keywords: file, folder, directory, downloads, documents, desktop, create, delete, open, read, write, where (location context)
    - File extensions: .txt, .pdf, .docx, .doc, .md (always system_task)
-   - Examples: "show files", "create folder", "what's in downloads", "where are you", "current directory", "what's in file.txt", "read report.pdf", "summarise notes.txt", "what files are present in Desktop"
+   - Examples: "show files", "create folder", "delete quantum.txt", "delte file.txt", "what's in downloads", "where are you", "what's in file.txt", "read report.pdf", "summarise notes.txt", "what files are present in Desktop"
 
 2. CONVERSATION (no tools):
    - General knowledge: "what is X", "explain Y", "how does Z work" (WITHOUT file extension)
@@ -609,6 +611,10 @@ Now analyze: "{text}"
 
         logger.info(f"[PLANNER] Detection: has_ext={has_file_extension}, has_read={has_read_indicator}, is_read_req={is_file_read_request}")
 
+        # IMPORTANT: Fast-path deletion requests
+        delete_indicators = ["delete", "remove", "trash", "erase", "delte", "dtle", "deleat", "del "]
+        is_delete_request = any(indicator in normalized for indicator in delete_indicators) and (has_file_extension or "file" in normalized or "that" in normalized)
+
         # IMPORTANT: Also fast-path directory listing requests
         # Check if this is asking about files/folders in a location
         folder_indicators = ["what files", "what folders", "list files", "list folders", "show files", "show folders",
@@ -632,6 +638,11 @@ Now analyze: "{text}"
         elif is_directory_list_request:
             # This is clearly a directory listing request - skip intent classification
             logger.info(f"[PLANNER] Detected directory listing request, skipping intent check")
+            intent_type = "system_task"
+            needs_tools = True
+            skip_intent_check = True
+        elif is_delete_request:
+            logger.info(f"[PLANNER] Detected deletion request, skipping intent check")
             intent_type = "system_task"
             needs_tools = True
             skip_intent_check = True
@@ -746,6 +757,31 @@ Now analyze: "{text}"
                 requires_confirmation=False
             )
 
+        # --- PENDING OPERATION FOLLOW-UP (Yes/No handling) ---
+        if self._pending_file_operation and any(word in normalized for word in ["yes", "sure", "confirmed", "ok", "proceed", "do it", "delete it"]):
+            op = self._pending_file_operation
+            if op["type"] == "delete":
+                path = op["path"]
+                self._pending_file_operation = None
+                return ExecutionPlan(
+                    reasoning=f"User confirmed deletion of {path}.",
+                    steps=[ToolCall(
+                        tool="filesystem.safe_delete",
+                        args={"path": path, "confirm": True},
+                        description=f"Delete confirmed file {path}"
+                    )],
+                    requires_confirmation=False,
+                    risk_level="high"
+                )
+        
+        if self._pending_file_operation and any(word in normalized for word in ["no", "stop", "cancel", "don't", "dont", "nevermind"]):
+            self._pending_file_operation = None
+            return ExecutionPlan(
+                reasoning="User cancelled the pending operation.",
+                steps=[],
+                requires_confirmation=False
+            )
+
         # --- SIMPLE CONVERSATIONAL QUERIES ---
         simple_phrases = [
             "hello", "hi", "hey", "good morning", "good afternoon", "good evening",
@@ -803,7 +839,7 @@ Now analyze: "{text}"
                 reasoning="List folders in user's home directory.",
                 steps=[ToolCall(
                     tool="filesystem.list_enhanced",
-                    args={"path": "~", "page_size": 20},
+                    args={"path": "~", "page_size": 10},
                     description="List folders in home directory"
                 )],
                 requires_confirmation=False
@@ -1191,23 +1227,43 @@ Now analyze: "{text}"
                     )
 
         # --- FILE DELETION ---
-        delete_indicators = ["delete", "remove", "trash", "erase"]
+        delete_indicators = ["delete", "remove", "trash", "erase", "delte", "dtle", "deleat", "del "]
         if any(indicator in normalized for indicator in delete_indicators):
             import re
-            file_match = re.search(r"(?:delete|remove|trash|erase)\s*(?:the\s*)?(?:file\s*)?[\"']?(\S+)[\"']?", normalized)
+            # Match common delete patterns (including typos)
+            file_match = re.search(r"(?:delete|remove|trash|erase|delte|dtle|deleat|del)\s*(?:the\s*)?(?:file\s*)?[\"']?([^\s\"']+)[\"']?", normalized)
             if file_match:
                 filepath = file_match.group(1).strip("\"'")
-                return ExecutionPlan(
-                    reasoning=f"Delete file '{filepath}' (requires confirmation).",
-                    steps=[ToolCall(
-                        tool="filesystem.safe_delete",
-                        args={"path": filepath, "confirm": False},
-                        description=f"Delete {filepath}"
-                    )],
-                    requires_confirmation=True,
-                    confirmation_message=f"Are you sure you want to delete '{filepath}'?",
-                    risk_level="high"
-                )
+                
+                # Check if it's a relative filename (no path separators)
+                is_simple_filename = "/" not in filepath and "\\" not in filepath and "~" not in filepath
+                
+                if is_simple_filename:
+                    # Search for it first to confirm existence and handle typos/context
+                    logger.info(f"[PLANNER] File deletion: fuzzy search for '{filepath}'")
+                    return ExecutionPlan(
+                        reasoning=f"Search for file '{filepath}' before deletion to confirm it exists.",
+                        steps=[ToolCall(
+                            tool="filesystem.find",
+                            args={"query": filepath, "path": "~", "max_results": 5},
+                            description=f"Find file matching '{filepath}'"
+                        )],
+                        requires_confirmation=False,
+                        confirmation_message=f"FUZZY_FILE_DELETE|{filepath}"
+                    )
+                else:
+                    # Absolute or clearly relative path - use safe_delete directly (still requires user confirmation via GUI/confirm)
+                    return ExecutionPlan(
+                        reasoning=f"Delete file at '{filepath}' (requires confirmation).",
+                        steps=[ToolCall(
+                            tool="filesystem.safe_delete",
+                            args={"path": filepath, "confirm": False},
+                            description=f"Delete {filepath}"
+                        )],
+                        requires_confirmation=True,
+                        confirmation_message=f"Are you sure you want to delete '{filepath}'?",
+                        risk_level="high"
+                    )
 
         # --- FILE RENAME ---
         rename_indicators = ["rename", "change name"]
@@ -1822,6 +1878,52 @@ CRITICAL: Keep the total summary under 200 words. Do NOT include the word "Summa
                         response = f"I encountered an error searching for '{filename}': {results[0].error}"
                         self._add_to_history("assistant", response)
                         return response
+
+        # Handle fuzzy file delete - user provided filename, we searched for it
+        if plan.confirmation_message and plan.confirmation_message.startswith("FUZZY_FILE_DELETE|"):
+            parts = plan.confirmation_message.split("|")
+            if len(parts) == 2:
+                _, filename = parts
+
+                # Check if we got search results
+                if len(results) == 1 and results[0].tool == "filesystem.find":
+                    search_result = results[0].result
+
+                    if results[0].success and search_result:
+                        # Note: filesystem.find returns 'results' list, some tools return 'files'
+                        files = search_result.get("results", []) or search_result.get("files", [])
+
+                        if not files:
+                            response = f"I couldn't find any file matching '{filename}' to delete. Please check the spelling or provide the full path."
+                            self._add_to_history("assistant", response)
+                            return response
+
+                        elif len(files) == 1:
+                            # Found exact match
+                            file_path = files[0].get("path")
+                            file_name = files[0].get("name")
+                            
+                            response = f"I found the file `{file_name}` at `{file_path}`. Are you sure you want to delete it?"
+                            self._pending_file_operation = {
+                                "type": "delete",
+                                "path": file_path,
+                                "original_query": filename
+                            }
+                            self._add_to_history("assistant", response)
+                            return response
+
+                        else:
+                            # Multiple matches
+                            response = f"I found {len(files)} files matching '{filename}':\n\n"
+                            for i, f in enumerate(files[:5], 1):
+                                response += f"{i}. `{f.get('path')}`\n"
+                            
+                            if len(files) > 5:
+                                response += f"\n(and {len(files)-5} more...)\n"
+                                
+                            response += "\nWhich one did you want to delete? Please provide the full path."
+                            self._add_to_history("assistant", response)
+                            return response
 
         # Handle document creation prompt - need to ask for filename and location
         if plan.confirmation_message == "DOCUMENT_CREATION_PROMPT":

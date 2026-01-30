@@ -123,6 +123,12 @@ git pull
 - Restart all services automatically
 - Test connections and show status
 
+***Command to check continuous logs, in another Terminal***
+```
+journalctl --user -u emberd -f
+
+```
+
 ---
 
 ## 📋 Table of Contents
