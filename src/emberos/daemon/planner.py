@@ -1488,7 +1488,7 @@ Now analyze: "{text}"
                     logger.info(f"[PLANNER] Generated content, length: {len(content)} chars")
 
                     # Now write the file
-                    import os
+                    # Note: os is already imported at module level
                     import stat
                     filepath_expanded = os.path.expanduser(filepath)
                     logger.info(f"[PLANNER] Writing to file: {filepath_expanded}")
