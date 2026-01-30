@@ -159,6 +159,8 @@ class AgentPlanner:
         # Conversation history for context (sliding window)
         self._conversation_history: list[dict] = []
         self._max_history_turns = 50  # Keep last 50 turns (25 user + 25 assistant) - much longer context
+        # State tracking for multi-step operations
+        self._pending_document_creation: Optional[dict] = None  # Stores {topic, format, file_ext}
 
     def _add_to_history(self, role: str, content: str) -> None:
         """Add a message to conversation history with sliding window."""
@@ -436,6 +438,84 @@ Now analyze: "{text}"
         """
         # Add user message to history
         self._add_to_history("user", user_message)
+
+        # =====================================================
+        # STEP -1: CHECK IF WE'RE WAITING FOR DOCUMENT CREATION INFO
+        # =====================================================
+        if self._pending_document_creation is not None:
+            import re
+
+            normalized = user_message.strip().lower()
+            doc_info = self._pending_document_creation
+
+            # Extract filename and location from user response
+            # Patterns: "filename.txt in Desktop", "create it as name.txt in Documents", etc.
+            location_pattern = r"(?:as\s+|named\s+)?([^\s]+\.\w+)\s+(?:in|at|to)\s+([^\s]+)"
+            match = re.search(location_pattern, normalized)
+
+            filename = None
+            location = None
+
+            if match:
+                filename = match.group(1)
+                location = match.group(2)
+            else:
+                # Try simpler patterns
+                # Just filename mentioned
+                filename_pattern = r"([^\s]+\.\w+)"
+                filename_match = re.search(filename_pattern, normalized)
+                if filename_match:
+                    filename = filename_match.group(1)
+
+                # Location keywords
+                for loc_keyword in ["desktop", "downloads", "documents", "pictures", "videos", "music"]:
+                    if loc_keyword in normalized:
+                        location = loc_keyword
+                        break
+
+            # If we got filename info, proceed with document creation
+            if filename or location:
+                # Use defaults if missing
+                if not filename:
+                    safe_topic = re.sub(r'[^\w\s-]', '', doc_info['topic']).strip().replace(' ', '_')[:50]
+                    filename = f"{safe_topic}{doc_info['file_ext']}"
+
+                if not location:
+                    location = "~"  # Home directory as default
+                else:
+                    # Map common location names to paths
+                    location_map = {
+                        "desktop": "~/Desktop",
+                        "downloads": "~/Downloads",
+                        "documents": "~/Documents",
+                        "pictures": "~/Pictures",
+                        "videos": "~/Videos",
+                        "music": "~/Music",
+                    }
+                    location = location_map.get(location.lower(), location)
+
+                # Ensure filename has correct extension
+                if not filename.endswith(doc_info['file_ext']):
+                    filename = f"{filename}{doc_info['file_ext']}"
+
+                # Build full path
+                import os
+                filepath = os.path.join(os.path.expanduser(location), filename)
+
+                logger.info(f"[PLANNER] Document creation: topic='{doc_info['topic']}', file='{filepath}'")
+
+                # Clear pending state
+                pending = self._pending_document_creation
+                self._pending_document_creation = None
+
+                # Create plan to generate content and write file
+                # We'll generate content in the planner and then write it
+                return ExecutionPlan(
+                    reasoning=f"Generate document content about '{pending['topic']}' and save to {filepath}",
+                    steps=[],  # Will be handled specially in synthesis
+                    requires_confirmation=False,
+                    confirmation_message=f"GENERATE_DOCUMENT|{pending['topic']}|{filepath}|{pending['format']}|{pending['length']}"
+                )
 
         # =====================================================
         # STEP 0: INTELLIGENT INTENT UNDERSTANDING
@@ -728,7 +808,7 @@ Now analyze: "{text}"
                     requires_confirmation=False
                 )
 
-        # --- FILE CREATION ---
+        # --- FILE CREATION WITH CONTENT ---
         create_indicators = ["create", "make", "new", "generate", "write"]
 
         # Check for content generation requests (e.g., "create a document about X")
@@ -750,7 +830,7 @@ Now analyze: "{text}"
                 if match:
                     topic = match.group(1).strip()
                     # Clean up common endings
-                    topic = re.sub(r"\s+(file|document|txt|md|markdown)$", "", topic, flags=re.IGNORECASE)
+                    topic = re.sub(r"\s+(file|document|txt|md|markdown|word|pdf)$", "", topic, flags=re.IGNORECASE)
                     break
 
             if topic:
@@ -770,15 +850,12 @@ Now analyze: "{text}"
 
                 # Extract filename if specified
                 name_match = re.search(r"(?:called|named|with\s*(?:the\s*)?name)\s*[\"']?([^\s\"']+)[\"']?", normalized)
+                filename = None
                 if name_match:
                     filename = name_match.group(1).strip("\"'")
                     # Ensure proper extension
                     if not filename.endswith(('.txt', '.md', '.docx', '.pdf')):
                         filename += file_ext
-                else:
-                    # Generate filename from topic (will be confirmed with user)
-                    safe_topic = re.sub(r'[^\w\s-]', '', topic).strip().replace(' ', '_')[:50]
-                    filename = f"{safe_topic}{file_ext}"
 
                 # Determine length
                 length = "medium"
@@ -787,27 +864,15 @@ Now analyze: "{text}"
                 elif "long" in normalized or "detailed" in normalized or "comprehensive" in normalized:
                     length = "long"
 
-                logger.info(f"[PLANNER] Content generation: topic='{topic}', file='{filename}', format={format_type}")
+                logger.info(f"[PLANNER] Content generation: topic='{topic}', format={format_type}, filename={filename}")
 
-                # Create plan with confirmation to get filename from user
-                confirmation_msg = f"Create a {format_type.upper()} document about '{topic}'?\nSuggested filename: {filename}\n(You can specify a different name if you want)"
-
+                # Create plan that needs confirmation to get filename and location
+                # The plan will be handled by synthesize_response to ask for filename and location first
                 return ExecutionPlan(
-                    reasoning=f"Generate content about '{topic}' and save to {format_type.upper()} file",
-                    steps=[
-                        ToolCall(
-                            tool="content.generate_and_write",
-                            args={
-                                "topic": topic,
-                                "filepath": filename,
-                                "format": format_type,
-                                "length": length
-                            },
-                            description=f"Generate {format_type.upper()} document about '{topic}'"
-                        )
-                    ],
+                    reasoning=f"Need to ask user for filename and location before generating content about '{topic}'",
+                    steps=[],  # Empty - will be filled after user provides filename
                     requires_confirmation=True,
-                    confirmation_message=confirmation_msg,
+                    confirmation_message="DOCUMENT_CREATION_PROMPT",  # Special marker
                     risk_level="low"
                 )
 
@@ -1155,6 +1220,133 @@ Now analyze: "{text}"
         Returns:
             Natural language response for the user
         """
+        # Handle document generation - user has provided filename and location
+        if plan.confirmation_message and plan.confirmation_message.startswith("GENERATE_DOCUMENT|"):
+            parts = plan.confirmation_message.split("|")
+            if len(parts) == 5:
+                _, topic, filepath, format_type, length = parts
+
+                try:
+                    # Generate content using LLM
+                    logger.info(f"[PLANNER] Generating {length} content about '{topic}'")
+
+                    # Determine word count based on length
+                    word_count = 150  # medium
+                    if length == "short":
+                        word_count = 75
+                    elif length == "long":
+                        word_count = 300
+
+                    generation_prompt = f"Write a {length} {format_type} document (approximately {word_count} words) about: {topic}\n\nProvide clear, informative content. Do not include any meta-commentary about the task."
+
+                    response = await self.llm.complete_chat(
+                        messages=[{"role": "user", "content": generation_prompt}],
+                        temperature=0.7,
+                        max_tokens=word_count * 2  # Rough token estimate
+                    )
+
+                    if not response or not response.content:
+                        self._add_to_history("assistant", "Sorry, I couldn't generate the content. Please try again.")
+                        return "Sorry, I couldn't generate the content. Please try again."
+
+                    content = response.content.strip()
+
+                    # Now write the file using documents.create tool
+                    import os
+                    filepath_expanded = os.path.expanduser(filepath)
+
+                    # Ensure directory exists
+                    os.makedirs(os.path.dirname(filepath_expanded), exist_ok=True)
+
+                    # For now, just write to txt/md files directly
+                    # TODO: Use documents.create tool for proper formatting
+                    extension = os.path.splitext(filepath_expanded)[1].lower()
+
+                    if extension in ['.txt', '.md']:
+                        with open(filepath_expanded, 'w', encoding='utf-8') as f:
+                            if extension == '.md':
+                                f.write(f"# {topic.title()}\n\n")
+                            f.write(content)
+
+                        response_msg = f"✓ Created {format_type} document: {filepath}\n\nContent preview:\n{content[:200]}..."
+                    else:
+                        # For docx and pdf, we need proper tool support
+                        response_msg = f"Sorry, creating {format_type} files is not yet fully supported. I can create TXT and Markdown files. Would you like me to create a .txt or .md file instead?"
+
+                    self._add_to_history("assistant", response_msg)
+                    return response_msg
+
+                except Exception as e:
+                    logger.exception(f"[PLANNER] Error generating document: {e}")
+                    error_msg = f"Sorry, I encountered an error creating the document: {str(e)}"
+                    self._add_to_history("assistant", error_msg)
+                    return error_msg
+
+        # Handle document creation prompt - need to ask for filename and location
+        if plan.confirmation_message == "DOCUMENT_CREATION_PROMPT":
+            import re
+
+            # Extract topic and format from the original message
+            normalized = user_message.strip().lower()
+
+            topic_patterns = [
+                r"(?:about|explaining|regarding|describing)\s+(.+?)(?:\s+(?:called|named|in|$))",
+                r"(?:on|of)\s+(?:the\s+topic\s+of\s+)?(.+?)(?:\s+(?:called|named|in|$))",
+            ]
+
+            topic = "the requested content"
+            for pattern in topic_patterns:
+                match = re.search(pattern, normalized, re.IGNORECASE)
+                if match:
+                    topic = match.group(1).strip()
+                    topic = re.sub(r"\s+(file|document|txt|md|markdown|word|pdf)$", "", topic, flags=re.IGNORECASE)
+                    break
+
+            # Determine format
+            format_type = "TXT"
+            file_ext = ".txt"
+            if any(word in normalized for word in ["markdown", "md"]):
+                format_type = "Markdown"
+                file_ext = ".md"
+            elif any(word in normalized for word in ["word", "docx", "doc"]):
+                format_type = "Word"
+                file_ext = ".docx"
+            elif any(word in normalized for word in ["pdf"]):
+                format_type = "PDF"
+                file_ext = ".pdf"
+
+            # Determine length
+            length = "medium"
+            if "short" in normalized or "brief" in normalized:
+                length = "short"
+            elif "long" in normalized or "detailed" in normalized or "comprehensive" in normalized:
+                length = "long"
+
+            # Store pending document creation info
+            self._pending_document_creation = {
+                "topic": topic,
+                "format": format_type,
+                "file_ext": file_ext,
+                "length": length
+            }
+
+            # Generate default filename from topic
+            safe_topic = re.sub(r'[^\w\s-]', '', topic).strip().replace(' ', '_')[:50]
+            suggested_name = f"{safe_topic}{file_ext}"
+
+            # Ask user for filename and location
+            response = (
+                f"I'll create a {format_type} document about '{topic}'.\n\n"
+                f"Please provide:\n"
+                f"1. **Filename** (suggested: {suggested_name})\n"
+                f"2. **Location** (e.g., Desktop, Downloads, Documents, or full path)\n\n"
+                f"Example: 'Create it as sunlight.txt in Desktop'\n"
+                f"Or simply: 'sunlight.txt in Desktop'"
+            )
+
+            self._add_to_history("assistant", response)
+            return response
+
         # Handle unclear intent - ask for clarification
         if plan.reasoning == "User input unclear - ask for clarification.":
             response = (
