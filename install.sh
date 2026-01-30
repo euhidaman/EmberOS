@@ -145,11 +145,11 @@ source "$VENV_DIR/bin/activate"
 pip install --upgrade pip
 
 if [ -f "$SCRIPT_DIR/pyproject.toml" ]; then
-    # Development install from source
-    pip install -e "$SCRIPT_DIR"
+    # Development install from source with document processing support
+    pip install -e "$SCRIPT_DIR[documents,vectordb]"
 else
     # Install from PyPI (when available)
-    pip install emberos
+    pip install emberos[documents,vectordb]
 fi
 
 deactivate
