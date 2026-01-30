@@ -222,12 +222,12 @@ CLASSIFICATION RULES:
 1. SYSTEM_TASK (needs tools):
    - File/folder operations: list, create, delete, move, copy, rename, search, find
    - Directory listing: "what files in [folder]", "show files", "list folders", "files are in [location]"
-   - File content reading: "what's in [file]", "read [file]", "open [file]", "show contents of [file]", "summarize [file]"
+   - File content reading: "what's in [file]", "read [file]", "open [file]", "show contents of [file]", "summarize [file]", "summarise [file]"
    - System queries: current directory, disk space, processes, system info
    - Location queries: "where are you", "which folder", "current location", "where am I"
    - Keywords: file, folder, directory, downloads, documents, desktop, create, delete, open, read, write, where (location context)
    - File extensions: .txt, .pdf, .docx, .doc, .md (always system_task)
-   - Examples: "show files", "create folder", "what's in downloads", "where are you", "current directory", "what's in file.txt", "read report.pdf", "what files are present in Desktop"
+   - Examples: "show files", "create folder", "what's in downloads", "where are you", "current directory", "what's in file.txt", "read report.pdf", "summarise notes.txt", "what files are present in Desktop"
 
 2. CONVERSATION (no tools):
    - General knowledge: "what is X", "explain Y", "how does Z work" (WITHOUT file extension)
@@ -367,6 +367,12 @@ CONFIDENCE: high
 
 Input: "read report.pdf"
 CORRECTED: read report.pdf
+TYPE: system_task
+TOOLS: yes
+CONFIDENCE: high
+
+Input: "summarise rainbows.txt"
+CORRECTED: summarise rainbows.txt
 TYPE: system_task
 TOOLS: yes
 CONFIDENCE: high
@@ -721,7 +727,9 @@ Now analyze: "{text}"
             "file", "folder", "directory", "download", "document", "desktop",
             "system", "process", "memory", "disk", "cpu", "computer",
             "create", "delete", "move", "copy", "rename", "open", "read",
-            "my ", "this ", "here", "current"
+            "summarize", "summarise", "view", "analyze", "list ", "show ",
+            "my ", "this ", "here", "current",
+            ".txt", ".pdf", ".docx", ".doc", ".md", ".markdown"
         ]
 
         is_general_knowledge = any(indicator in normalized for indicator in general_knowledge_indicators)
@@ -741,9 +749,9 @@ Now analyze: "{text}"
             "thanks", "thank you", "bye", "goodbye", "okay", "ok", "yes", "no",
             "cool", "nice", "great", "awesome", "sure", "alright"
         ]
-        if normalized.strip() in simple_phrases or len(normalized.split()) <= 2:
+        if not needs_tools and (normalized.strip() in simple_phrases or len(normalized.split()) <= 2):
             # Very short or greeting - respond directly
-            if not any(word in normalized for word in ["list", "show", "find", "create", "delete", "open"]):
+            if not any(word in normalized for word in ["list", "show", "find", "create", "delete", "open", "read", "view", "summarize", "summarise", "what's", "analyze", "explain", "contents"]):
                 return ExecutionPlan(
                     reasoning="Simple greeting or acknowledgment - respond directly.",
                     steps=[],
@@ -1083,7 +1091,7 @@ Now analyze: "{text}"
             abs_path_match = re.search(r"[\"']?((?:/|~)[^\s\"']+\.(?:pdf|docx|doc|txt|md|markdown))[\"']?", normalized, re.IGNORECASE)
 
             # Pattern 2: Relative filename with extension
-            file_match = re.search(r"(?:read|open|view|contents?\s*of|what'?s?\s*in|what\s*is\s*in|summarize?|summary\s*of|explain|analyze)\s*(?:the\s*)?(?:file\s*|document\s*)?[\"']?([^\s\"'/]+\.(?:pdf|docx|doc|txt|md|markdown))[\"']?", normalized, re.IGNORECASE)
+            file_match = re.search(r"(?:read|open|view|contents?\s*of|what'?s?\s*in|what\s*is\s*in|summaris[ez]e?|summary\s*of|explain|analyze)\s*(?:the\s*)?(?:file\s*|document\s*)?[\"']?([^\s\"'/]+\.(?:pdf|docx|doc|txt|md|markdown))[\"']?", normalized, re.IGNORECASE)
 
             filepath = None
             if abs_path_match:
@@ -1980,7 +1988,7 @@ Keep the summary under 200 words."""
 
                 # Check if user wants summarization
                 wants_summary = any(word in user_message.lower() for word in [
-                    "summarize", "summary", "explain", "what does", "analyze", "tell me about"
+                    "summarize", "summarise", "summary", "explain", "what does", "analyze", "tell me about"
                 ])
 
                 if wants_summary:
