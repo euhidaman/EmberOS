@@ -514,6 +514,149 @@ class FileSearchTool(BaseTool):
 
 
 @register_tool
+class ContentGenerateAndWriteTool(BaseTool):
+    """Generate content using LLM and write to file."""
+
+    @property
+    def manifest(self) -> ToolManifest:
+        return ToolManifest(
+            name="content.generate_and_write",
+            description="Generate content about a topic using LLM and write to file",
+            category=ToolCategory.FILESYSTEM,
+            icon="✍️",
+            parameters=[
+                ToolParameter(
+                    name="topic",
+                    type="string",
+                    description="Topic to generate content about",
+                    required=True
+                ),
+                ToolParameter(
+                    name="filepath",
+                    type="string",
+                    description="File path to write to",
+                    required=True
+                ),
+                ToolParameter(
+                    name="format",
+                    type="string",
+                    description="Content format: txt, md, or document",
+                    required=False,
+                    default="txt",
+                    choices=["txt", "md", "markdown", "document"]
+                ),
+                ToolParameter(
+                    name="length",
+                    type="string",
+                    description="Content length: short, medium, or long",
+                    required=False,
+                    default="medium",
+                    choices=["short", "medium", "long"]
+                )
+            ],
+            permissions=["filesystem:write", "llm:generate"],
+            risk_level=RiskLevel.LOW,
+            requires_confirmation=False
+        )
+
+    async def execute(self, params: dict[str, Any]) -> ToolResult:
+        topic = params["topic"]
+        filepath = os.path.expanduser(params["filepath"])
+        format_type = params.get("format", "txt")
+        length = params.get("length", "medium")
+
+        try:
+            # Import LLM orchestrator
+            from emberos.daemon.llm_orchestrator import LLMOrchestrator, CompletionRequest
+            from emberos.core.config import LLMConfig
+
+            # Create LLM orchestrator instance
+            config = LLMConfig()
+            llm = LLMOrchestrator(config)
+            await llm.start()
+
+            # Determine content length
+            length_map = {
+                "short": ("200-300 words", 400),
+                "medium": ("400-600 words", 800),
+                "long": ("800-1200 words", 1500)
+            }
+            word_count, max_tokens = length_map.get(length, length_map["medium"])
+
+            # Build prompt based on format
+            if format_type in ["md", "markdown"]:
+                format_instructions = """Format the content in Markdown with:
+- A main title (# Title)
+- Section headings (## Heading)
+- Bullet points where appropriate
+- Emphasis where needed (bold, italics)"""
+            else:
+                format_instructions = "Format as plain text with clear paragraphs."
+
+            # Generate content prompt
+            content_prompt = f"""Write informative, well-structured content about: {topic}
+
+Requirements:
+- Length: {word_count}
+- Be factually accurate and educational
+- Include key concepts and explanations
+- {format_instructions}
+- Write in a clear, engaging style
+
+Begin writing now:"""
+
+            # Call LLM to generate content
+            response = await llm.complete(CompletionRequest(
+                prompt=content_prompt,
+                max_tokens=max_tokens,
+                temperature=0.7,  # More creative for content generation
+                top_p=0.9
+            ))
+
+            await llm.stop()
+
+            if not response or not response.content:
+                return ToolResult(
+                    success=False,
+                    error="Failed to generate content - empty response from LLM"
+                )
+
+            generated_content = response.content.strip()
+
+            # Add title if markdown and not present
+            if format_type in ["md", "markdown"] and not generated_content.startswith('#'):
+                title = topic.title()
+                generated_content = f"# {title}\n\n{generated_content}"
+
+            # Write to file
+            filepath_obj = Path(filepath)
+            filepath_obj.parent.mkdir(parents=True, exist_ok=True)
+
+            with open(filepath_obj, 'w', encoding='utf-8') as f:
+                f.write(generated_content)
+
+            word_count_actual = len(generated_content.split())
+
+            return ToolResult(
+                success=True,
+                data={
+                    "filepath": str(filepath_obj),
+                    "topic": topic,
+                    "word_count": word_count_actual,
+                    "format": format_type,
+                    "preview": generated_content[:200] + "..." if len(generated_content) > 200 else generated_content
+                }
+            )
+
+        except Exception as e:
+            return ToolResult(
+                success=False,
+                error=f"Failed to generate and write content: {str(e)}",
+                error_type=type(e).__name__
+            )
+
+
+@register_tool
 class FileReadTool(BaseTool):
     """Read file contents."""
 

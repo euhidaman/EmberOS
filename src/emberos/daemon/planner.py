@@ -729,7 +729,74 @@ Now analyze: "{text}"
                 )
 
         # --- FILE CREATION ---
-        create_indicators = ["create", "make", "new", "generate"]
+        create_indicators = ["create", "make", "new", "generate", "write"]
+
+        # Check for content generation requests (e.g., "create a document about X")
+        content_keywords = ["about", "explaining", "on the topic", "regarding", "describing"]
+        has_content_request = any(keyword in normalized for keyword in content_keywords)
+
+        if any(indicator in normalized for indicator in create_indicators) and has_content_request:
+            import re
+
+            # Extract the topic
+            topic_patterns = [
+                r"(?:about|explaining|regarding|describing)\s+(.+?)(?:\s+(?:called|named|in|$))",
+                r"(?:on|of)\s+(?:the\s+topic\s+of\s+)?(.+?)(?:\s+(?:called|named|in|$))",
+            ]
+
+            topic = None
+            for pattern in topic_patterns:
+                match = re.search(pattern, normalized, re.IGNORECASE)
+                if match:
+                    topic = match.group(1).strip()
+                    # Clean up common endings
+                    topic = re.sub(r"\s+(file|document|txt|md|markdown)$", "", topic, flags=re.IGNORECASE)
+                    break
+
+            if topic:
+                # Determine file format
+                format_type = "txt"
+                if any(word in normalized for word in ["markdown", "md"]):
+                    format_type = "md"
+
+                # Extract filename if specified
+                name_match = re.search(r"(?:called|named|with\s*(?:the\s*)?name)\s*[\"']?([^\s\"']+)[\"']?", normalized)
+                if name_match:
+                    filename = name_match.group(1).strip("\"'")
+                    if not filename.endswith(('.txt', '.md')):
+                        filename += f".{format_type}"
+                else:
+                    # Generate filename from topic
+                    safe_topic = re.sub(r'[^\w\s-]', '', topic).strip().replace(' ', '_')[:50]
+                    filename = f"{safe_topic}.{format_type}"
+
+                # Determine length
+                length = "medium"
+                if "short" in normalized or "brief" in normalized:
+                    length = "short"
+                elif "long" in normalized or "detailed" in normalized or "comprehensive" in normalized:
+                    length = "long"
+
+                logger.info(f"[PLANNER] Content generation: topic='{topic}', file='{filename}', format={format_type}")
+
+                return ExecutionPlan(
+                    reasoning=f"Generate content about '{topic}' and save to {filename}",
+                    steps=[
+                        ToolCall(
+                            tool="content.generate_and_write",
+                            args={
+                                "topic": topic,
+                                "filepath": filename,
+                                "format": format_type,
+                                "length": length
+                            },
+                            description=f"Generate content about '{topic}' and write to {filename}"
+                        )
+                    ],
+                    requires_confirmation=False
+                )
+
+        # Template-based file creation (original)
         file_types = {
             "spreadsheet": ("filesystem.create_spreadsheet", {"path": "new_spreadsheet.csv", "template": "blank"}),
             "budget": ("filesystem.create_spreadsheet", {"path": "budget.csv", "template": "budget"}),
