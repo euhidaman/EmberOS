@@ -893,6 +893,9 @@ Now analyze: "{text}"
                 )
 
         # Template-based file creation (original)
+        # NOTE: This must come AFTER the content generation check above
+        # so that "create a txt document about X" triggers content generation,
+        # not template-based creation
         file_types = {
             "spreadsheet": ("filesystem.create_spreadsheet", {"path": "new_spreadsheet.csv", "template": "blank"}),
             "budget": ("filesystem.create_spreadsheet", {"path": "budget.csv", "template": "budget"}),
@@ -915,7 +918,8 @@ Now analyze: "{text}"
             "directory": ("filesystem.create_directory", {"path": "new_folder"}),
         }
 
-        if any(indicator in normalized for indicator in create_indicators):
+        # Only use template-based creation if there's NO content request (about, explaining, etc.)
+        if any(indicator in normalized for indicator in create_indicators) and not has_content_request:
             import re
             # Try to extract filename and file type
             name_match = re.search(r"(?:called|named|with\s*(?:the\s*)?name)\s*[\"']?(\S+)[\"']?", normalized)
