@@ -484,6 +484,16 @@ Now analyze: "{text}"
                     risk_level="low"
                 )
 
+            # If user provided a filename with an extension, honor it and update format
+            if filename:
+                ext = os.path.splitext(filename)[1].lower()
+                if ext in ['.txt', '.md', '.docx', '.pdf']:
+                    doc_info['file_ext'] = ext
+                    # Update format name
+                    format_map = {'.txt': 'txt', '.md': 'md', '.docx': 'docx', '.pdf': 'pdf'}
+                    doc_info['format'] = format_map.get(ext, doc_info['format'])
+                    logger.info(f"[PLANNER] User provided extension {ext}, updated format to {doc_info['format']}")
+
             # Use defaults if missing
             if not filename:
                 safe_topic = re.sub(r'[^\w\s-]', '', doc_info['topic']).strip().replace(' ', '_')[:50]
@@ -870,19 +880,24 @@ Now analyze: "{text}"
                     logger.info(f"[PLANNER] Fallback topic extraction: '{topic}'")
 
             if topic:
-                # Determine file format
+                # Determine file format - check explicit format keywords
                 format_type = "txt"
                 file_ext = ".txt"
 
-                if any(word in normalized for word in ["markdown", "md"]):
+                # Use word boundaries to avoid matching "doc" in "document"
+                import re
+                if re.search(r'\b(markdown|\.md)\b', normalized):
                     format_type = "md"
                     file_ext = ".md"
-                elif any(word in normalized for word in ["word", "docx", "doc"]):
+                elif re.search(r'\b(docx|\.docx|word)\b', normalized) and not re.search(r'\btxt\b', normalized):
                     format_type = "docx"
                     file_ext = ".docx"
-                elif any(word in normalized for word in ["pdf"]):
+                elif re.search(r'\bpdf\b', normalized):
                     format_type = "pdf"
                     file_ext = ".pdf"
+                # If user explicitly says "txt", keep it as txt (default)
+
+                logger.info(f"[PLANNER] Detected format: {format_type} (file_ext: {file_ext})")
 
                 # Extract filename if specified
                 name_match = re.search(r"(?:called|named|with\s*(?:the\s*)?name)\s*[\"']?([^\s\"']+)[\"']?", normalized)
