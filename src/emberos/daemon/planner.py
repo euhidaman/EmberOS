@@ -220,13 +220,15 @@ CLASSIFICATION RULES:
 
 1. SYSTEM_TASK (needs tools):
    - File/folder operations: list, create, delete, move, copy, rename, search, find
+   - File content reading: "what's in [file]", "read [file]", "open [file]", "show contents of [file]", "summarize [file]"
    - System queries: current directory, disk space, processes, system info
    - Location queries: "where are you", "which folder", "current location", "where am I"
    - Keywords: file, folder, directory, downloads, documents, desktop, create, delete, open, read, write, where (location context)
-   - Examples: "show files", "create folder", "what's in downloads", "where are you", "current directory"
+   - File extensions: .txt, .pdf, .docx, .doc, .md (always system_task)
+   - Examples: "show files", "create folder", "what's in downloads", "where are you", "current directory", "what's in file.txt", "read report.pdf"
 
 2. CONVERSATION (no tools):
-   - General knowledge: "what is X", "explain Y", "how does Z work"
+   - General knowledge: "what is X", "explain Y", "how does Z work" (WITHOUT file extension)
    - Identity (NOT location): "who are you", "what are you", "what model", "introduce yourself"
    - Math: "calculate", "what is 2+2"
    - Greetings: "hello", "hi", "thanks", "goodbye"
@@ -234,11 +236,13 @@ CLASSIFICATION RULES:
    - Examples: "what is gravity", "who are you" (identity), "calculate 5*3", "hello"
    
    Note: "where are you" is system_task (location), not conversation (identity)
+   Note: "what's in ocean.txt" is system_task (file reading), not conversation
 
 3. UNCLEAR:
    - Completely garbled (>70% nonsense)
    - Empty or meaningless
    - Conflicting intents
+   - Need clarification
    - Need clarification
 
 EDGE CASES:
@@ -352,6 +356,24 @@ CORRECTED: what is python and list my files
 TYPE: system_task
 TOOLS: yes
 CONFIDENCE: medium
+
+Input: "what's in ocean.txt"
+CORRECTED: what's in ocean.txt
+TYPE: system_task
+TOOLS: yes
+CONFIDENCE: high
+
+Input: "read report.pdf"
+CORRECTED: read report.pdf
+TYPE: system_task
+TOOLS: yes
+CONFIDENCE: high
+
+Input: "what is in meeting_notes.txt"
+CORRECTED: what is in meeting_notes.txt
+TYPE: system_task
+TOOLS: yes
+CONFIDENCE: high
 
 Now analyze: "{text}"
 """
@@ -560,9 +582,25 @@ Now analyze: "{text}"
         has_content_request = any(keyword in normalized for keyword in content_keywords)
         force_content_flow = any(indicator in normalized for indicator in create_indicators) and has_content_request
 
+        # IMPORTANT: Also fast-path file reading requests to bypass intent classification
+        # Check if this looks like a file reading request (has file extension)
+        has_file_extension = any(ext in normalized for ext in ['.txt', '.pdf', '.docx', '.doc', '.md', '.markdown'])
+        file_read_indicators = ["what's in", "what is in", "read", "open", "show contents", "view", "summarize", "summarise"]
+        is_file_read_request = has_file_extension and any(indicator in normalized for indicator in file_read_indicators)
+
+        if is_file_read_request:
+            # This is clearly a file reading request - skip intent classification
+            logger.info(f"[PLANNER] Detected file reading request (has extension + read indicator), skipping intent check")
+            intent_type = "system_task"
+            needs_tools = True
+            corrected_message = normalized
+            skip_intent_check = True
+        else:
+            skip_intent_check = False
+
         # Quick check: if message looks mostly correct, skip LLM intent check
         # This saves time for well-formed queries
-        skip_intent_check = (
+        skip_intent_check = skip_intent_check or (
             force_content_flow or
             len(normalized.split()) <= 2 or  # Very short
             normalized.startswith(':') or     # Command
