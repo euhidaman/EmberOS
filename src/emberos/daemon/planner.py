@@ -756,19 +756,29 @@ Now analyze: "{text}"
             if topic:
                 # Determine file format
                 format_type = "txt"
+                file_ext = ".txt"
+
                 if any(word in normalized for word in ["markdown", "md"]):
                     format_type = "md"
+                    file_ext = ".md"
+                elif any(word in normalized for word in ["word", "docx", "doc"]):
+                    format_type = "docx"
+                    file_ext = ".docx"
+                elif any(word in normalized for word in ["pdf"]):
+                    format_type = "pdf"
+                    file_ext = ".pdf"
 
                 # Extract filename if specified
                 name_match = re.search(r"(?:called|named|with\s*(?:the\s*)?name)\s*[\"']?([^\s\"']+)[\"']?", normalized)
                 if name_match:
                     filename = name_match.group(1).strip("\"'")
-                    if not filename.endswith(('.txt', '.md')):
-                        filename += f".{format_type}"
+                    # Ensure proper extension
+                    if not filename.endswith(('.txt', '.md', '.docx', '.pdf')):
+                        filename += file_ext
                 else:
-                    # Generate filename from topic
+                    # Generate filename from topic (will be confirmed with user)
                     safe_topic = re.sub(r'[^\w\s-]', '', topic).strip().replace(' ', '_')[:50]
-                    filename = f"{safe_topic}.{format_type}"
+                    filename = f"{safe_topic}{file_ext}"
 
                 # Determine length
                 length = "medium"
@@ -779,8 +789,11 @@ Now analyze: "{text}"
 
                 logger.info(f"[PLANNER] Content generation: topic='{topic}', file='{filename}', format={format_type}")
 
+                # Create plan with confirmation to get filename from user
+                confirmation_msg = f"Create a {format_type.upper()} document about '{topic}'?\nSuggested filename: {filename}\n(You can specify a different name if you want)"
+
                 return ExecutionPlan(
-                    reasoning=f"Generate content about '{topic}' and save to {filename}",
+                    reasoning=f"Generate content about '{topic}' and save to {format_type.upper()} file",
                     steps=[
                         ToolCall(
                             tool="content.generate_and_write",
@@ -790,10 +803,12 @@ Now analyze: "{text}"
                                 "format": format_type,
                                 "length": length
                             },
-                            description=f"Generate content about '{topic}' and write to {filename}"
+                            description=f"Generate {format_type.upper()} document about '{topic}'"
                         )
                     ],
-                    requires_confirmation=False
+                    requires_confirmation=True,
+                    confirmation_message=confirmation_msg,
+                    risk_level="low"
                 )
 
         # Template-based file creation (original)

@@ -540,10 +540,10 @@ class ContentGenerateAndWriteTool(BaseTool):
                 ToolParameter(
                     name="format",
                     type="string",
-                    description="Content format: txt, md, or document",
+                    description="Content format: txt, md, docx, or pdf",
                     required=False,
                     default="txt",
-                    choices=["txt", "md", "markdown", "document"]
+                    choices=["txt", "md", "markdown", "docx", "word", "pdf"]
                 ),
                 ToolParameter(
                     name="length",
@@ -590,6 +590,13 @@ class ContentGenerateAndWriteTool(BaseTool):
 - Section headings (## Heading)
 - Bullet points where appropriate
 - Emphasis where needed (bold, italics)"""
+            elif format_type in ["docx", "word", "pdf"]:
+                format_instructions = """Format the content with:
+- A clear title
+- Well-organized sections with headings
+- Clear paragraphs
+- Key points emphasized
+- Professional structure suitable for a document"""
             else:
                 format_instructions = "Format as plain text with clear paragraphs."
 
@@ -628,12 +635,127 @@ Begin writing now:"""
                 title = topic.title()
                 generated_content = f"# {title}\n\n{generated_content}"
 
-            # Write to file
+            # Write to file based on format
             filepath_obj = Path(filepath)
             filepath_obj.parent.mkdir(parents=True, exist_ok=True)
 
-            with open(filepath_obj, 'w', encoding='utf-8') as f:
-                f.write(generated_content)
+            if format_type in ["docx", "word"]:
+                # Create Word document
+                try:
+                    from docx import Document
+                    from docx.shared import Pt, RGBColor
+                    from docx.enum.text import WD_PARAGRAPH_ALIGNMENT
+
+                    doc = Document()
+
+                    # Add title
+                    title = topic.title()
+                    title_para = doc.add_heading(title, level=0)
+                    title_para.alignment = WD_PARAGRAPH_ALIGNMENT.CENTER
+
+                    # Parse content and add to document
+                    # Split by double newlines for paragraphs
+                    sections = generated_content.split('\n\n')
+
+                    for section in sections:
+                        section = section.strip()
+                        if not section:
+                            continue
+
+                        # Check if it's a heading (starts with capital and ends with colon or is short)
+                        if len(section) < 100 and (section.endswith(':') or section[0].isupper()):
+                            doc.add_heading(section.rstrip(':'), level=1)
+                        else:
+                            doc.add_paragraph(section)
+
+                    # Ensure .docx extension
+                    if not str(filepath_obj).endswith('.docx'):
+                        filepath_obj = filepath_obj.with_suffix('.docx')
+
+                    doc.save(filepath_obj)
+
+                except ImportError:
+                    return ToolResult(
+                        success=False,
+                        error="python-docx library not installed. Install with: pip install python-docx"
+                    )
+
+            elif format_type == "pdf":
+                # Create PDF document
+                try:
+                    from reportlab.lib.pagesizes import letter
+                    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+                    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+                    from reportlab.lib.units import inch
+                    from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
+
+                    # Ensure .pdf extension
+                    if not str(filepath_obj).endswith('.pdf'):
+                        filepath_obj = filepath_obj.with_suffix('.pdf')
+
+                    # Create PDF
+                    doc = SimpleDocTemplate(str(filepath_obj), pagesize=letter)
+                    story = []
+                    styles = getSampleStyleSheet()
+
+                    # Custom styles
+                    title_style = ParagraphStyle(
+                        'CustomTitle',
+                        parent=styles['Heading1'],
+                        fontSize=18,
+                        textColor=RGBColor(0, 0, 0),
+                        spaceAfter=30,
+                        alignment=TA_CENTER,
+                        fontName='Helvetica-Bold'
+                    )
+
+                    heading_style = ParagraphStyle(
+                        'CustomHeading',
+                        parent=styles['Heading2'],
+                        fontSize=14,
+                        spaceAfter=12,
+                        fontName='Helvetica-Bold'
+                    )
+
+                    body_style = ParagraphStyle(
+                        'CustomBody',
+                        parent=styles['BodyText'],
+                        fontSize=11,
+                        alignment=TA_JUSTIFY,
+                        spaceAfter=12
+                    )
+
+                    # Add title
+                    title = topic.title()
+                    story.append(Paragraph(title, title_style))
+                    story.append(Spacer(1, 0.3*inch))
+
+                    # Parse content and add to PDF
+                    sections = generated_content.split('\n\n')
+
+                    for section in sections:
+                        section = section.strip()
+                        if not section:
+                            continue
+
+                        # Check if it's a heading
+                        if len(section) < 100 and (section.endswith(':') or section[0].isupper()):
+                            story.append(Paragraph(section.rstrip(':'), heading_style))
+                        else:
+                            story.append(Paragraph(section, body_style))
+
+                    doc.build(story)
+
+                except ImportError:
+                    return ToolResult(
+                        success=False,
+                        error="reportlab library not installed. Install with: pip install reportlab"
+                    )
+
+            else:
+                # Plain text or markdown
+                with open(filepath_obj, 'w', encoding='utf-8') as f:
+                    f.write(generated_content)
 
             word_count_actual = len(generated_content.split())
 
