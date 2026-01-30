@@ -1364,23 +1364,24 @@ Now analyze: "{text}"
 
                         except OSError as e:
                             if e.errno == 30:  # Read-only file system
-                                logger.warning(f"[PLANNER] Target directory is read-only, writing to /tmp instead")
+                                logger.warning("[PLANNER] Target directory is read-only, writing to Ember data dir instead")
 
-                                # Write to /tmp as fallback
-                                import tempfile
-                                temp_path = os.path.join('/tmp', os.path.basename(filepath_expanded))
+                                # Write to Ember data directory as fallback (always writable)
+                                ember_data_dir = os.path.expanduser("~/.local/share/ember")
+                                os.makedirs(ember_data_dir, exist_ok=True)
+                                temp_path = os.path.join(ember_data_dir, os.path.basename(filepath_expanded))
 
                                 with open(temp_path, 'w', encoding='utf-8') as f:
                                     if extension == '.md':
                                         f.write(f"# {topic.title()}\n\n")
                                     f.write(content)
 
-                                logger.info(f"[PLANNER] File written to temporary location: {temp_path}")
+                                logger.info(f"[PLANNER] File written to fallback location: {temp_path}")
                                 response_msg = (
-                                    f"WARNING: Your filesystem is mounted as read-only!\n\n"
+                                    f"WARNING: I could not write to '{filepath_expanded}'.\n\n"
                                     f"I created the document at: {temp_path}\n\n"
-                                    f"To fix this, run: sudo mount -o remount,rw /home\n\n"
-                                    f"Then move the file with: mv {temp_path} {filepath_expanded}\n\n"
+                                    f"If you want it in Downloads, move it with:\n"
+                                    f"mv '{temp_path}' '{filepath_expanded}'\n\n"
                                     f"Content preview:\n{content[:200]}..."
                                 )
                             else:

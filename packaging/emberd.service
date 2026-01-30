@@ -12,14 +12,14 @@ RestartSec=5
 
 # Environment
 Environment=EMBER_LOG_LEVEL=INFO
+Environment=CHROMA_CACHE_DIR=%h/.local/share/ember/vectors/.cache
 
 # Security hardening
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=%h/.local/share/ember %h/.config/ember %h/.cache/ember
-PrivateTmp=true
+ReadWritePaths=%h/.local/share/ember %h/.config/ember %h/.cache/ember %h/Downloads %h/Documents %h/Desktop %h/Pictures %h/Videos %h/Music %h
+PrivateTmp=false
 
 [Install]
 WantedBy=default.target
-
