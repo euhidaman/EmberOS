@@ -193,6 +193,211 @@ class AgentPlanner:
         logger.info("Clearing conversation history")
         self._conversation_history = []
 
+    def _correct_typos(self, text: str) -> tuple[str, bool]:
+        """
+        Attempt to correct common typos and misspellings.
+
+        Returns:
+            Tuple of (corrected_text, was_corrected)
+        """
+        original = text
+        corrected = text
+
+        # Common word corrections (misspelling -> correct)
+        common_corrections = {
+            # Question words
+            "wat": "what", "waht": "what", "wht": "what", "whta": "what",
+            "wher": "where", "whre": "where", "wehre": "where", "whrere": "where",
+            "wich": "which", "whcih": "which", "whihc": "which",
+            "hwo": "how", "hw": "how", "howw": "how",
+            "whn": "when", "wehn": "when", "whne": "when",
+            "whi": "why", "whhy": "why",
+
+            # Common verbs
+            "ar": "are", "aer": "are", "rae": "are",
+            "si": "is", "iss": "is",
+            "cna": "can", "acn": "can",
+            "cn": "can",
+            "woudl": "would", "wuold": "would", "wold": "would",
+            "cuold": "could", "coudl": "could", "coud": "could",
+            "shoudl": "should", "shuold": "should", "shoud": "should",
+            "hvae": "have", "ahve": "have", "hav": "have",
+            "dose": "does", "deos": "does",
+            "dont": "don't", "dnt": "don't", "donot": "do not",
+            "cant": "can't", "cnat": "can't", "cannot": "can not",
+            "wont": "won't",
+            "im": "i'm", "iam": "i am",
+            "youre": "you're", "your're": "you're",
+            "theyre": "they're", "thier": "their",
+            "teh": "the", "hte": "the", "th": "the",
+
+            # File system related
+            "fils": "files", "fiel": "file", "fiels": "files", "filles": "files",
+            "floder": "folder", "fodler": "folder", "foldr": "folder", "flder": "folder",
+            "direcotry": "directory", "directroy": "directory", "diretory": "directory",
+            "downlods": "downloads", "donwloads": "downloads", "downlaods": "downloads",
+            "documets": "documents", "docuemnts": "documents", "documetns": "documents",
+            "destop": "desktop", "dekstop": "desktop", "destkop": "desktop",
+            "picutres": "pictures", "picturs": "pictures", "pictrues": "pictures",
+            "vdieos": "videos", "vidoes": "videos", "viedos": "videos",
+            "muisc": "music", "musc": "music", "musci": "music",
+
+            # Actions
+            "crate": "create", "craete": "create", "creat": "create",
+            "delte": "delete", "deleet": "delete", "delet": "delete",
+            "remvoe": "remove", "reomve": "remove", "remov": "remove",
+            "mvoe": "move", "moev": "move",
+            "cpoy": "copy", "coyp": "copy",
+            "serach": "search", "seach": "search", "saerch": "search",
+            "fnd": "find", "fidn": "find", "fnid": "find",
+            "opne": "open", "oepn": "open",
+            "lsit": "list", "lits": "list", "lis": "list",
+            "shwo": "show", "hsow": "show", "sohw": "show",
+            "raed": "read", "reda": "read",
+            "wrtie": "write", "wirte": "write", "writ": "write",
+            "renam": "rename", "renaem": "rename",
+            "orgnaize": "organize", "organzie": "organize", "oragnize": "organize",
+
+            # Common nouns
+            "spredsheet": "spreadsheet", "spreadhseet": "spreadsheet", "spreadshet": "spreadsheet",
+            "bduget": "budget", "budegt": "budget",
+            "systme": "system", "sysetm": "system", "sysem": "system",
+            "procss": "process", "porcess": "process",
+            "memroy": "memory", "memoyr": "memory",
+            "infromation": "information", "informaiton": "information", "info": "information",
+
+            # Pronouns
+            "yuo": "you", "yoi": "you", "uyo": "you",
+            "i": "I",  # Capitalize I
+            "mee": "me", "em": "me",
+            "thsi": "this", "htis": "this", "tihs": "this",
+            "taht": "that", "htat": "that",
+            "thees": "these", "tehse": "these",
+            "tehre": "there", "theer": "there", "ther": "there",
+            "heer": "here", "hre": "here", "hrer": "here",
+
+            # Misc
+            "abuot": "about", "abotu": "about", "baout": "about",
+            "wiht": "with", "wtih": "with", "iwth": "with",
+            "fomr": "from", "form": "from", "frm": "from",
+            "anythign": "anything", "anythin": "anything",
+            "somethign": "something", "somethin": "something",
+            "nothign": "nothing", "nothin": "nothing",
+            "plase": "please", "pls": "please", "plz": "please",
+            "thnk": "think", "thikn": "think",
+            "knwo": "know", "konw": "know", "kno": "know",
+            "becuase": "because", "becasue": "because", "bcause": "because",
+        }
+
+        # Apply word-level corrections
+        words = corrected.split()
+        corrected_words = []
+
+        for word in words:
+            # Check if word needs correction
+            clean_word = word.strip(".,?!;:'\"")
+            punctuation = word[len(clean_word):] if len(word) > len(clean_word) else ""
+
+            if clean_word in common_corrections:
+                corrected_words.append(common_corrections[clean_word] + punctuation)
+            else:
+                corrected_words.append(word)
+
+        corrected = " ".join(corrected_words)
+
+        # Fix common phrase patterns
+        phrase_corrections = [
+            # "where ar you" -> "where are you"
+            (r"\bwhere\s+ar\s+you\b", "where are you"),
+            (r"\bwhat\s+ar\s+you\b", "what are you"),
+            (r"\bwho\s+ar\s+you\b", "who are you"),
+            (r"\bhow\s+ar\s+you\b", "how are you"),
+            # "wat can you do" -> "what can you do"
+            (r"\bwat\s+can\b", "what can"),
+            (r"\bwat\s+is\b", "what is"),
+            (r"\bwat\s+are\b", "what are"),
+            # Double letters
+            (r"\bhelllo\b", "hello"),
+            (r"\bhiii\b", "hi"),
+            # Missing spaces
+            (r"\bwhatis\b", "what is"),
+            (r"\bwhereis\b", "where is"),
+            (r"\bhowto\b", "how to"),
+            (r"\bcantyou\b", "can't you"),
+            (r"\bdoyou\b", "do you"),
+            (r"\bcanyou\b", "can you"),
+            # "u" as "you"
+            (r"\bu\b", "you"),
+            (r"\br\b", "are"),
+            (r"\by\b", "why"),
+        ]
+
+        import re
+        for pattern, replacement in phrase_corrections:
+            corrected = re.sub(pattern, replacement, corrected, flags=re.IGNORECASE)
+
+        was_corrected = (corrected != original)
+        return corrected, was_corrected
+
+    def _is_too_garbled(self, text: str) -> bool:
+        """
+        Check if the text is too garbled to understand.
+
+        Returns True if we should ask the user to rephrase.
+        """
+        # Very short messages are usually fine
+        if len(text) < 5:
+            return False
+
+        words = text.split()
+
+        # If message has very few recognizable words, it's garbled
+        # Check against a list of common English words
+        common_words = {
+            "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+            "have", "has", "had", "do", "does", "did", "will", "would", "could",
+            "should", "may", "might", "must", "can", "shall",
+            "i", "you", "he", "she", "it", "we", "they", "me", "him", "her", "us", "them",
+            "my", "your", "his", "its", "our", "their", "mine", "yours", "ours", "theirs",
+            "this", "that", "these", "those", "what", "which", "who", "whom", "whose",
+            "where", "when", "why", "how",
+            "and", "or", "but", "if", "then", "else", "because", "so", "for", "nor",
+            "in", "on", "at", "to", "from", "by", "with", "about", "into", "through",
+            "not", "no", "yes", "here", "there", "now", "then",
+            "all", "some", "any", "many", "much", "more", "most", "few", "less", "least",
+            "just", "only", "also", "very", "too", "quite", "really", "still",
+            "new", "old", "good", "bad", "great", "first", "last", "long", "short",
+            "file", "files", "folder", "folders", "directory", "desktop", "downloads",
+            "documents", "pictures", "videos", "music", "home",
+            "create", "delete", "move", "copy", "rename", "find", "search", "list",
+            "show", "open", "read", "write", "help", "please", "thanks",
+            "hello", "hi", "hey", "bye", "ok", "okay", "sure", "yes", "no",
+        }
+
+        # Count recognizable words
+        recognizable_count = 0
+        for word in words:
+            clean_word = word.strip(".,?!;:'\"").lower()
+            if clean_word in common_words or len(clean_word) <= 2:
+                recognizable_count += 1
+
+        # If less than 30% of words are recognizable, it's garbled
+        if len(words) > 3 and recognizable_count / len(words) < 0.3:
+            return True
+
+        # Check for excessive repeated characters (like "aaaaaaaa")
+        import re
+        if re.search(r'(.)\1{4,}', text):  # 5+ repeated chars
+            return True
+
+        # Check for no vowels (likely keyboard mashing)
+        vowels = set('aeiouAEIOU')
+        has_vowel = any(c in vowels for c in text if c.isalpha())
+        if len(text) > 5 and not has_vowel:
+            return True
+
+        return False
+
     async def create_plan(
         self,
         user_message: str,
@@ -211,8 +416,28 @@ class AgentPlanner:
         # Add user message to history
         self._add_to_history("user", user_message)
 
-        # Fast-path: rule-based plans for common factual queries
+        # =====================================================
+        # STEP 0: TYPO CORRECTION AND FUZZY MATCHING
+        # Attempt to understand user intent despite typos/misspellings
+        # =====================================================
+
+        original_message = user_message
         normalized = user_message.strip().lower()
+
+        # Apply typo corrections
+        corrected_message, was_corrected = self._correct_typos(normalized)
+        if was_corrected:
+            logger.info(f"[PLANNER] Corrected typos: '{normalized}' -> '{corrected_message}'")
+            normalized = corrected_message
+
+        # Check if message is too garbled to understand
+        if self._is_too_garbled(normalized):
+            logger.warning(f"[PLANNER] Message too garbled to understand: '{original_message}'")
+            return ExecutionPlan(
+                reasoning="Message unclear - ask user to rephrase.",
+                steps=[],
+                requires_confirmation=False
+            )
 
         # =====================================================
         # STEP 1: DIRECT RESPONSE QUERIES (NO TOOLS NEEDED)
@@ -789,6 +1014,12 @@ class AgentPlanner:
         Returns:
             Natural language response for the user
         """
+        # Check if this was a "garbled message" plan
+        if plan.reasoning == "Message unclear - ask user to rephrase.":
+            response = "I'm not quite sure what you meant. Could you please rephrase your question?"
+            self._add_to_history("assistant", response)
+            return response
+
         # If no tools were executed, generate direct response from LLM
         if not results:
             logger.info(f"[PLANNER] No tools executed, generating direct LLM response for: '{user_message[:50]}...'")
