@@ -600,11 +600,14 @@ Now analyze: "{text}"
         has_content_request = any(keyword in normalized for keyword in content_keywords)
         force_content_flow = any(indicator in normalized for indicator in create_indicators) and has_content_request
 
-        # IMPORTANT: Also fast-path file reading requests to bypass intent classification
         # Check if this looks like a file reading request (has file extension)
-        has_file_extension = any(ext in normalized for ext in ['.txt', '.pdf', '.docx', '.doc', '.md', '.markdown'])
-        file_read_indicators = ["what's in", "what is in", "read", "open", "show contents", "view", "summarize", "summarise"]
-        is_file_read_request = has_file_extension and any(indicator in normalized for indicator in file_read_indicators)
+        file_extensions = ['.txt', '.pdf', '.docx', '.doc', '.md', '.markdown']
+        has_file_extension = any(ext in normalized for ext in file_extensions)
+        file_read_indicators = ["what's in", "what is in", "read", "open", "show contents", "view", "summarize", "summarise", "summary", "analyze", "explain"]
+        has_read_indicator = any(indicator in normalized for indicator in file_read_indicators)
+        is_file_read_request = has_file_extension and has_read_indicator
+
+        logger.info(f"[PLANNER] Detection: has_ext={has_file_extension}, has_read={has_read_indicator}, is_read_req={is_file_read_request}")
 
         # IMPORTANT: Also fast-path directory listing requests
         # Check if this is asking about files/folders in a location
@@ -735,7 +738,7 @@ Now analyze: "{text}"
         is_general_knowledge = any(indicator in normalized for indicator in general_knowledge_indicators)
         is_system_related = any(indicator in normalized for indicator in system_indicators)
 
-        if is_general_knowledge and not is_system_related:
+        if is_general_knowledge and not is_system_related and not has_file_extension:
             # This is a general knowledge question - respond directly
             return ExecutionPlan(
                 reasoning="General knowledge question - respond directly using LLM knowledge.",
@@ -749,7 +752,9 @@ Now analyze: "{text}"
             "thanks", "thank you", "bye", "goodbye", "okay", "ok", "yes", "no",
             "cool", "nice", "great", "awesome", "sure", "alright"
         ]
-        if not needs_tools and (normalized.strip() in simple_phrases or len(normalized.split()) <= 2):
+        # Safeguard: Never skip for 2-word file commands like "summarize file.txt"
+        is_short_query = normalized.strip() in simple_phrases or len(normalized.split()) <= 2
+        if is_short_query and not needs_tools and not has_file_extension:
             # Very short or greeting - respond directly
             if not any(word in normalized for word in ["list", "show", "find", "create", "delete", "open", "read", "view", "summarize", "summarise", "what's", "analyze", "explain", "contents"]):
                 return ExecutionPlan(
@@ -1102,6 +1107,12 @@ Now analyze: "{text}"
                 # User provided relative filename - will need to search or confirm
                 filepath = file_match.group(1).strip("\"'")
                 logger.info(f"[PLANNER] Detected relative filename: {filepath}")
+            else:
+                # Fallback: Just look for any filename with extension in the message
+                fallback_match = re.search(r"[\"']?([^\s\"'/]+\.(?:pdf|docx|doc|txt|md|markdown))[\"']?", normalized, re.IGNORECASE)
+                if fallback_match:
+                    filepath = fallback_match.group(1).strip("\"'")
+                    logger.info(f"[PLANNER] Fallback detected filename: {filepath}")
 
             if filepath:
                 ext = os.path.splitext(filepath)[1].lower()
