@@ -173,8 +173,11 @@ class LLMOrchestrator:
 
     def _is_model_available(self, model_type: ModelType) -> bool:
         """Check if requested model is available."""
-        # Always return True to force an attempt, as the server might be up now
-        return True
+        if model_type == ModelType.TEXT:
+            return self._text_connected
+        elif model_type == ModelType.VISION:
+            return self._vision_connected
+        return False
 
     async def complete(self, request: CompletionRequest) -> CompletionResponse:
         """
@@ -191,18 +194,34 @@ class LLMOrchestrator:
         model_type = request.model_type
         server_url = self._get_server_url(model_type)
 
-        # Check if model is available
-        if not self._is_model_available(model_type):
-            # Try fallback
-            if model_type == ModelType.TEXT and self._vision_connected:
-                logger.info("Text model unavailable, using vision model")
+        # Check model availability and fallback
+        if model_type == ModelType.TEXT and not self._text_connected:
+            if self._vision_connected:
+                logger.info("[ORCHESTRATOR] BitNet not available, routing to Qwen2.5-VL")
                 model_type = ModelType.VISION
                 server_url = self._vision_url
-            elif model_type == ModelType.VISION and self._text_connected:
-                logger.warning("Vision model unavailable, cannot process visual content")
-                raise ConnectionError("Vision model not available for image processing")
             else:
-                raise ConnectionError(f"No LLM servers available")
+                # Try to reconnect first
+                await self._check_text_model()
+                await self._check_vision_model()
+
+                if self._text_connected:
+                    server_url = self._text_url
+                elif self._vision_connected:
+                    model_type = ModelType.VISION
+                    server_url = self._vision_url
+                else:
+                    raise ConnectionError("No LLM servers available")
+
+        elif model_type == ModelType.VISION and not self._vision_connected:
+            if self._text_connected and not request.has_images:
+                logger.info("[ORCHESTRATOR] Qwen2.5-VL not available, routing text to BitNet")
+                model_type = ModelType.TEXT
+                server_url = self._text_url
+            else:
+                raise ConnectionError("Vision model not available for image processing")
+
+        logger.info(f"[ORCHESTRATOR] Routing request to {model_type.value} model at {server_url}")
 
         payload = {
             "prompt": request.prompt,

@@ -213,13 +213,95 @@ class AgentPlanner:
 
         # Fast-path: rule-based plans for common factual queries
         normalized = user_message.strip().lower()
+
+        # =====================================================
+        # STEP 1: DIRECT RESPONSE QUERIES (NO TOOLS NEEDED)
+        # These are general knowledge or identity questions
+        # =====================================================
+
+        # --- IDENTITY QUESTIONS ---
+        identity_phrases = [
+            "what are you", "who are you", "what model", "which model",
+            "what llm", "what ai", "your name", "tell me about yourself",
+            "introduce yourself", "are you gpt", "are you chatgpt",
+            "are you claude", "are you llama", "what can you do",
+            "your capabilities", "help me"
+        ]
+        if any(phrase in normalized for phrase in identity_phrases):
+            # Return empty plan - will trigger direct LLM response
+            return ExecutionPlan(
+                reasoning="Identity/capability question - respond directly without tools.",
+                steps=[],
+                requires_confirmation=False
+            )
+
+        # --- GENERAL KNOWLEDGE QUESTIONS ---
+        # These don't need tools - they're just knowledge questions
+        general_knowledge_indicators = [
+            # Question words that typically indicate general knowledge
+            "does a ", "is a ", "are there ", "what is a ", "what are ",
+            "how does ", "how do ", "why is ", "why do ", "why are ",
+            "can a ", "could a ", "would a ", "should a ",
+            "explain ", "tell me about ", "describe ",
+            "what's the difference", "compare ", "versus ",
+            # Math and logic
+            "calculate ", "compute ", "what is ", "how many ", "how much ",
+            # Facts
+            "who invented", "who created", "who discovered", "when was ",
+            "where is ", "what year ", "how old is ",
+            # Concepts
+            "define ", "meaning of ", "what does ", "definition of "
+        ]
+
+        # Check if this is a general knowledge question (not about files/system)
+        system_indicators = [
+            "file", "folder", "directory", "download", "document", "desktop",
+            "system", "process", "memory", "disk", "cpu", "computer",
+            "create", "delete", "move", "copy", "rename", "open", "read",
+            "my ", "this ", "here", "current"
+        ]
+
+        is_general_knowledge = any(indicator in normalized for indicator in general_knowledge_indicators)
+        is_system_related = any(indicator in normalized for indicator in system_indicators)
+
+        if is_general_knowledge and not is_system_related:
+            # This is a general knowledge question - respond directly
+            return ExecutionPlan(
+                reasoning="General knowledge question - respond directly using LLM knowledge.",
+                steps=[],
+                requires_confirmation=False
+            )
+
+        # --- SIMPLE CONVERSATIONAL QUERIES ---
+        simple_phrases = [
+            "hello", "hi", "hey", "good morning", "good afternoon", "good evening",
+            "thanks", "thank you", "bye", "goodbye", "okay", "ok", "yes", "no",
+            "cool", "nice", "great", "awesome", "sure", "alright"
+        ]
+        if normalized.strip() in simple_phrases or len(normalized.split()) <= 2:
+            # Very short or greeting - respond directly
+            if not any(word in normalized for word in ["list", "show", "find", "create", "delete", "open"]):
+                return ExecutionPlan(
+                    reasoning="Simple greeting or acknowledgment - respond directly.",
+                    steps=[],
+                    requires_confirmation=False
+                )
+
+        # =====================================================
+        # STEP 2: FILESYSTEM CRUD RULE-BASED ROUTING
+        # These require tools to interact with the system
+        # =====================================================
+
+        # --- WORKING DIRECTORY ---
         if any(phrase in normalized for phrase in [
             "which folder am i in",
             "where am i",
             "current directory",
             "working directory",
             "which folder are you in",
-            "where are you"
+            "where are you",
+            "pwd",
+            "cwd"
         ]):
             return ExecutionPlan(
                 reasoning="Use system.getcwd to return the current working directory.",
@@ -227,59 +309,330 @@ class AgentPlanner:
                 requires_confirmation=False
             )
 
-        if "desktop" in normalized and any(word in normalized for word in ["files", "file", "list", "what is in", "show"]):
+        # --- WHAT FOLDERS CAN YOU SEE ---
+        if any(phrase in normalized for phrase in [
+            "which folders can you see",
+            "what folders can you see",
+            "what folders do you see",
+            "show me folders",
+            "list folders",
+            "available folders",
+            "what folders are there",
+            "what directories",
+            "list my folders"
+        ]):
             return ExecutionPlan(
-                reasoning="List files in Desktop directory.",
+                reasoning="List folders in user's home directory.",
                 steps=[ToolCall(
-                    tool="filesystem.list",
-                    args={"path": "~/Desktop", "recursive": False, "show_hidden": False, "max_items": 20},
-                    description="List files in Desktop"
+                    tool="filesystem.list_enhanced",
+                    args={"path": "~", "page_size": 20},
+                    description="List folders in home directory"
                 )],
                 requires_confirmation=False
             )
 
-        if "downloads" in normalized and any(word in normalized for word in ["files", "file", "list", "what is in", "show"]):
+        # --- PAGINATION CONTINUATION ---
+        if any(phrase in normalized for phrase in [
+            "show more",
+            "list more",
+            "continue",
+            "next page",
+            "more items",
+            "more files",
+            "keep going",
+            "yes, show more",
+            "yes show more"
+        ]) and "stop" not in normalized:
+            # Get last pagination session from context if available
             return ExecutionPlan(
-                reasoning="List files in Downloads directory.",
+                reasoning="Continue listing from previous pagination state.",
                 steps=[ToolCall(
-                    tool="filesystem.list",
-                    args={"path": "~/Downloads", "recursive": False, "show_hidden": False, "max_items": 20},
-                    description="List files in Downloads"
+                    tool="filesystem.list_enhanced",
+                    args={"path": ".", "continue_pagination": True, "page_size": 10},
+                    description="Show next page of directory listing"
                 )],
                 requires_confirmation=False
             )
 
-        # Rule-based: list any visible folder under home (surface-level)
-        if any(word in normalized for word in ["files", "file", "list", "what is in", "show"]):
+        # --- STOP PAGINATION ---
+        if any(phrase in normalized for phrase in [
+            "stop",
+            "enough",
+            "that's all",
+            "no more",
+            "cancel",
+            "don't show more"
+        ]):
+            return ExecutionPlan(
+                reasoning="User requested to stop listing.",
+                steps=[],
+                requires_confirmation=False
+            )
+
+        # --- DIRECTORY LISTING (Enhanced matching) ---
+        # Common patterns: "what files in X", "show X folder", "list X", "what's in X"
+        list_patterns = [
+            r"(?:what|which|show|list|display|see)\s*(?:files?|folders?|items?|contents?)?\s*(?:are\s*)?(?:in|inside|on|at)?\s*(?:my\s*)?(\w+)",
+            r"(?:what's|whats)\s*(?:in|inside)\s*(?:my\s*)?(\w+)",
+            r"(?:list|show|display)\s*(?:my\s*)?(\w+)\s*(?:folder|directory)?",
+            r"(?:open|go to)\s*(?:my\s*)?(\w+)",
+        ]
+
+        folder_aliases = {
+            "desktop": "~/Desktop",
+            "downloads": "~/Downloads",
+            "documents": "~/Documents",
+            "pictures": "~/Pictures",
+            "videos": "~/Videos",
+            "music": "~/Music",
+            "home": "~",
+        }
+
+        # Check for explicit folder names in query
+        for folder_name, folder_path in folder_aliases.items():
+            if folder_name in normalized and any(word in normalized for word in [
+                "files", "file", "list", "what", "show", "folder", "in", "inside", "open"
+            ]):
+                return ExecutionPlan(
+                    reasoning=f"List files in {folder_name} directory.",
+                    steps=[ToolCall(
+                        tool="filesystem.list_enhanced",
+                        args={"path": folder_path, "page_size": 10},
+                        description=f"List files in {folder_name}"
+                    )],
+                    requires_confirmation=False
+                )
+
+        # Generic "list here" or "what files here"
+        if any(phrase in normalized for phrase in [
+            "what files here",
+            "what's here",
+            "whats here",
+            "list here",
+            "files here",
+            "show files",
+            "list files"
+        ]) and not any(folder in normalized for folder in folder_aliases.keys()):
+            return ExecutionPlan(
+                reasoning="List files in current directory.",
+                steps=[ToolCall(
+                    tool="filesystem.list_enhanced",
+                    args={"path": ".", "page_size": 10},
+                    description="List files in current directory"
+                )],
+                requires_confirmation=False
+            )
+
+        # --- FILE SEARCH ---
+        search_indicators = ["find", "search", "locate", "where is", "look for"]
+        if any(indicator in normalized for indicator in search_indicators):
             import re
-            from pathlib import Path
+            # Try to extract filename from query
+            search_match = re.search(
+                r"(?:find|search|locate|look\s*for|where\s*is)\s*(?:my\s*)?(?:a\s*)?(?:file\s*)?(?:called\s*|named\s*)?[\"']?(\S+)[\"']?",
+                normalized
+            )
+            if search_match:
+                query = search_match.group(1).strip("\"'")
+                return ExecutionPlan(
+                    reasoning=f"Search for file matching '{query}'.",
+                    steps=[ToolCall(
+                        tool="filesystem.find",
+                        args={"query": query, "path": "~", "max_results": 20},
+                        description=f"Find files matching '{query}'"
+                    )],
+                    requires_confirmation=False
+                )
 
-            home = Path.home()
-            # Match: "files in <folder>" or "list <folder>"
-            match = re.search(r"(?:files|file|list|show|what is in)\s+(?:in\s+)?([\w\-\s]+)", normalized)
-            if match:
-                folder_name = match.group(1).strip()
-                # Normalize common aliases
-                if folder_name in ("desktop", "downloads", "documents", "pictures", "videos", "music"):
-                    target = f"~/{folder_name.capitalize()}" if folder_name != "downloads" else "~/Downloads"
-                else:
-                    # Surface-level only: direct child of home
-                    candidate = home / folder_name
-                    if candidate.exists() and candidate.is_dir():
-                        target = str(candidate)
-                    else:
-                        target = None
+        # --- FILE CREATION ---
+        create_indicators = ["create", "make", "new", "generate"]
+        file_types = {
+            "spreadsheet": ("filesystem.create_spreadsheet", {"path": "new_spreadsheet.csv", "template": "blank"}),
+            "budget": ("filesystem.create_spreadsheet", {"path": "budget.csv", "template": "budget"}),
+            "csv": ("filesystem.create_spreadsheet", {"path": "data.csv", "template": "blank"}),
+            "python": ("filesystem.create_file", {"path": "script.py", "template": "python"}),
+            "script": ("filesystem.create_file", {"path": "script.py", "template": "python"}),
+            "javascript": ("filesystem.create_file", {"path": "script.js", "template": "javascript"}),
+            "js": ("filesystem.create_file", {"path": "script.js", "template": "javascript"}),
+            "html": ("filesystem.create_file", {"path": "page.html", "template": "html"}),
+            "webpage": ("filesystem.create_file", {"path": "page.html", "template": "html"}),
+            "markdown": ("filesystem.create_file", {"path": "document.md", "template": "markdown"}),
+            "md": ("filesystem.create_file", {"path": "document.md", "template": "markdown"}),
+            "readme": ("filesystem.create_file", {"path": "README.md", "template": "readme"}),
+            "text": ("filesystem.create_file", {"path": "document.txt", "template": "blank"}),
+            "txt": ("filesystem.create_file", {"path": "document.txt", "template": "blank"}),
+            "file": ("filesystem.create_file", {"path": "new_file.txt", "template": "blank"}),
+            "json": ("filesystem.create_file", {"path": "data.json", "template": "json"}),
+            "yaml": ("filesystem.create_file", {"path": "config.yaml", "template": "yaml"}),
+            "folder": ("filesystem.create_directory", {"path": "new_folder"}),
+            "directory": ("filesystem.create_directory", {"path": "new_folder"}),
+        }
 
-                if target:
+        if any(indicator in normalized for indicator in create_indicators):
+            import re
+            # Try to extract filename and file type
+            name_match = re.search(r"(?:called|named|with\s*(?:the\s*)?name)\s*[\"']?(\S+)[\"']?", normalized)
+
+            for file_type, (tool, default_args) in file_types.items():
+                if file_type in normalized:
+                    args = default_args.copy()
+
+                    # Extract custom name if provided
+                    if name_match:
+                        custom_name = name_match.group(1).strip("\"'")
+                        # Add appropriate extension if not present
+                        if file_type in ["spreadsheet", "budget", "csv"]:
+                            if not custom_name.endswith(".csv"):
+                                custom_name += ".csv"
+                        elif file_type in ["python", "script"]:
+                            if not custom_name.endswith(".py"):
+                                custom_name += ".py"
+                        args["path"] = f"~/{custom_name}"
+
                     return ExecutionPlan(
-                        reasoning=f"List files in {target}.",
-                        steps=[ToolCall(
-                            tool="filesystem.list",
-                            args={"path": target, "recursive": False, "show_hidden": False, "max_items": 20},
-                            description=f"List files in {target}"
-                        )],
+                        reasoning=f"Create a new {file_type} file.",
+                        steps=[ToolCall(tool=tool, args=args, description=f"Create {file_type} file")],
                         requires_confirmation=False
                     )
+
+        # --- FILE READING ---
+        read_indicators = ["read", "open", "show contents", "what's in", "contents of", "view"]
+        if any(indicator in normalized for indicator in read_indicators):
+            import re
+            file_match = re.search(r"(?:read|open|view|contents?\s*of)\s*(?:the\s*)?(?:file\s*)?[\"']?(\S+\.\w+)[\"']?", normalized)
+            if file_match:
+                filepath = file_match.group(1).strip("\"'")
+                return ExecutionPlan(
+                    reasoning=f"Read contents of file '{filepath}'.",
+                    steps=[ToolCall(
+                        tool="filesystem.read",
+                        args={"path": filepath, "max_size": 50000},
+                        description=f"Read file {filepath}"
+                    )],
+                    requires_confirmation=False
+                )
+
+        # --- FILE DELETION ---
+        delete_indicators = ["delete", "remove", "trash", "erase"]
+        if any(indicator in normalized for indicator in delete_indicators):
+            import re
+            file_match = re.search(r"(?:delete|remove|trash|erase)\s*(?:the\s*)?(?:file\s*)?[\"']?(\S+)[\"']?", normalized)
+            if file_match:
+                filepath = file_match.group(1).strip("\"'")
+                return ExecutionPlan(
+                    reasoning=f"Delete file '{filepath}' (requires confirmation).",
+                    steps=[ToolCall(
+                        tool="filesystem.safe_delete",
+                        args={"path": filepath, "confirm": False},
+                        description=f"Delete {filepath}"
+                    )],
+                    requires_confirmation=True,
+                    confirmation_message=f"Are you sure you want to delete '{filepath}'?",
+                    risk_level="high"
+                )
+
+        # --- FILE RENAME ---
+        rename_indicators = ["rename", "change name"]
+        if any(indicator in normalized for indicator in rename_indicators):
+            import re
+            rename_match = re.search(r"(?:rename|change\s*name\s*of)\s*[\"']?(\S+)[\"']?\s*(?:to|as)\s*[\"']?(\S+)[\"']?", normalized)
+            if rename_match:
+                old_name = rename_match.group(1).strip("\"'")
+                new_name = rename_match.group(2).strip("\"'")
+                return ExecutionPlan(
+                    reasoning=f"Rename '{old_name}' to '{new_name}'.",
+                    steps=[ToolCall(
+                        tool="filesystem.rename",
+                        args={"path": old_name, "new_name": new_name},
+                        description=f"Rename {old_name} to {new_name}"
+                    )],
+                    requires_confirmation=True,
+                    confirmation_message=f"Rename '{old_name}' to '{new_name}'?",
+                    risk_level="medium"
+                )
+
+        # --- FILE MOVE ---
+        move_indicators = ["move", "mv"]
+        if any(indicator in normalized for indicator in move_indicators):
+            import re
+            move_match = re.search(r"(?:move|mv)\s*[\"']?(\S+)[\"']?\s*(?:to|into)\s*[\"']?(\S+)[\"']?", normalized)
+            if move_match:
+                source = move_match.group(1).strip("\"'")
+                destination = move_match.group(2).strip("\"'")
+                return ExecutionPlan(
+                    reasoning=f"Move '{source}' to '{destination}'.",
+                    steps=[ToolCall(
+                        tool="filesystem.move",
+                        args={"source": source, "destination": destination},
+                        description=f"Move {source} to {destination}"
+                    )],
+                    requires_confirmation=True,
+                    confirmation_message=f"Move '{source}' to '{destination}'?",
+                    risk_level="medium"
+                )
+
+        # --- FILE COPY ---
+        copy_indicators = ["copy", "duplicate", "cp"]
+        if any(indicator in normalized for indicator in copy_indicators):
+            import re
+            copy_match = re.search(r"(?:copy|duplicate|cp)\s*[\"']?(\S+)[\"']?\s*(?:to|as)\s*[\"']?(\S+)[\"']?", normalized)
+            if copy_match:
+                source = copy_match.group(1).strip("\"'")
+                destination = copy_match.group(2).strip("\"'")
+                return ExecutionPlan(
+                    reasoning=f"Copy '{source}' to '{destination}'.",
+                    steps=[ToolCall(
+                        tool="filesystem.copy",
+                        args={"source": source, "destination": destination},
+                        description=f"Copy {source} to {destination}"
+                    )],
+                    requires_confirmation=False
+                )
+
+        # --- FILE INFO ---
+        info_indicators = ["info", "details", "properties", "size of", "when was"]
+        if any(indicator in normalized for indicator in info_indicators):
+            import re
+            file_match = re.search(r"(?:info|details|properties|size)\s*(?:of|about)?\s*[\"']?(\S+)[\"']?", normalized)
+            if file_match:
+                filepath = file_match.group(1).strip("\"'")
+                return ExecutionPlan(
+                    reasoning=f"Get information about '{filepath}'.",
+                    steps=[ToolCall(
+                        tool="filesystem.info",
+                        args={"path": filepath},
+                        description=f"Get info for {filepath}"
+                    )],
+                    requires_confirmation=False
+                )
+
+        # --- ORGANIZE FOLDER ---
+        if "organize" in normalized:
+            import re
+            folder_match = re.search(r"organize\s*(?:my\s*)?[\"']?(\S+)[\"']?", normalized)
+            folder_path = folder_match.group(1).strip("\"'") if folder_match else "~/Downloads"
+
+            # Resolve alias
+            for alias, path in folder_aliases.items():
+                if alias in folder_path.lower():
+                    folder_path = path
+                    break
+
+            return ExecutionPlan(
+                reasoning=f"Organize files in '{folder_path}' by type.",
+                steps=[ToolCall(
+                    tool="filesystem.organize",
+                    args={"path": folder_path, "dry_run": True},
+                    description=f"Organize {folder_path} (preview)"
+                )],
+                requires_confirmation=True,
+                confirmation_message=f"Organize files in '{folder_path}'?",
+                risk_level="medium"
+            )
+
+        # =====================================================
+        # END FILESYSTEM CRUD ROUTING - FALL THROUGH TO LLM
+        # =====================================================
 
         # Log context size
         context_size = self._get_context_size()
@@ -436,36 +789,73 @@ class AgentPlanner:
         Returns:
             Natural language response for the user
         """
-        # If no tools were executed, generate direct response
+        # If no tools were executed, generate direct response from LLM
         if not results:
+            logger.info(f"[PLANNER] No tools executed, generating direct LLM response for: '{user_message[:50]}...'")
+
             # Use conversation history for better context
             conversation_context = self._build_conversation_context()
 
-            # Add system prompt with model identity and concise instruction
-            system_message = {
-                "role": "system",
-                "content": (
-                    "You are Ember-VLM, a local AI assistant. "
-                    "Keep responses concise and to the point. "
-                    "If asked about your model/identity, say you are 'Ember-VLM'."
-                )
-            }
-
-            messages = [system_message] + conversation_context + [{"role": "user", "content": user_message}]
-
-            response = await self.llm.complete_chat(
-                messages=messages,
-                temperature=0.3,
-                max_tokens=256  # Reduced from 1024 for concise responses
+            # Build a simple, focused system prompt
+            system_content = (
+                "You are Ember-VLM, a helpful local AI assistant running on the user's computer. "
+                "Answer questions directly and concisely. "
+                "For general knowledge questions, provide accurate, brief answers. "
+                "If asked about your identity, say you are 'Ember-VLM'. "
+                "Keep responses under 100 words unless more detail is specifically requested."
             )
-            assistant_response = response.content.strip()
 
-            # Add to history
-            self._add_to_history("assistant", assistant_response)
+            # Build messages - keep it simple to avoid timeouts
+            messages = [
+                {"role": "system", "content": system_content}
+            ]
 
-            return assistant_response
+            # Add limited history (last 4 messages max to prevent timeouts)
+            recent_history = conversation_context[-4:] if len(conversation_context) > 4 else conversation_context
+            messages.extend(recent_history)
 
-        # Build synthesis prompt
+            # Add current user message
+            messages.append({"role": "user", "content": user_message})
+
+            try:
+                logger.info(f"[PLANNER] Sending to LLM with {len(messages)} messages")
+                response = await self.llm.complete_chat(
+                    messages=messages,
+                    temperature=0.7,  # Slightly higher for more natural responses
+                    max_tokens=200   # Keep responses short to prevent timeouts
+                )
+
+                if response and response.content:
+                    assistant_response = response.content.strip()
+                    logger.info(f"[PLANNER] Got LLM response: '{assistant_response[:100]}...'")
+                else:
+                    assistant_response = "I'm here to help! What would you like to know or do?"
+                    logger.warning("[PLANNER] LLM returned empty response")
+
+                # Add to history
+                self._add_to_history("assistant", assistant_response)
+
+                return assistant_response
+
+            except Exception as e:
+                logger.exception(f"[PLANNER] Error getting direct LLM response: {e}")
+                # Provide a helpful fallback
+                fallback = "I'm Ember-VLM, your local AI assistant. I can help you with files, documents, system info, and answer questions. What would you like to do?"
+                self._add_to_history("assistant", fallback)
+                return fallback
+
+        # We have tool results - format them nicely
+        logger.info(f"[PLANNER] Synthesizing response for {len(results)} tool results")
+
+        # First, try to format results directly without LLM (faster)
+        direct_response = self._format_results_fallback(results)
+
+        # If the direct formatting looks good, use it
+        if direct_response and len(direct_response) > 20:
+            self._add_to_history("assistant", direct_response)
+            return direct_response
+
+        # Otherwise, try LLM synthesis with a short timeout
         results_json = json.dumps([r.to_dict() for r in results], indent=2)
 
         synthesis_prompt = SYNTHESIS_PROMPT.format(
@@ -480,15 +870,13 @@ class AgentPlanner:
             response = await self.llm.complete_chat(
                 messages=messages,
                 temperature=0.3,
-                max_tokens=256  # Reduced from 1024 for concise responses
+                max_tokens=200  # Keep it short
             )
             content = response.content.strip() if response and response.content else ""
-            
-            # If LLM didn't provide a response, create one from results
-            if not content and results:
-                content = self._format_results_fallback(results)
-            elif not content:
-                content = "✓ Task completed successfully."
+
+            # If LLM didn't provide a response, use direct formatting
+            if not content:
+                content = direct_response if direct_response else "Task completed successfully."
 
             # Add to history
             self._add_to_history("assistant", content)
@@ -496,21 +884,10 @@ class AgentPlanner:
             return content
 
         except Exception as e:
-            logger.exception(f"Error synthesizing response: {e}")
+            logger.exception(f"[PLANNER] Error synthesizing response: {e}")
 
-            # Fallback: Show results directly if available
-            if results:
-                fallback = self._format_results_fallback(results)
-            else:
-                # Basic success/failure summary
-                success_count = sum(1 for r in results if r.success)
-                total_count = len(results)
-
-                if success_count == total_count:
-                    fallback = f"✓ Completed {total_count} operation(s) successfully."
-                else:
-                    fallback = f"Completed {success_count}/{total_count} operations. Some errors occurred."
-
+            # Use the direct formatting as fallback
+            fallback = direct_response if direct_response else "Task completed."
             self._add_to_history("assistant", fallback)
             return fallback
 

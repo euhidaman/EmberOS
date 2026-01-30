@@ -269,16 +269,35 @@ Response: "I found your budget spreadsheet at:
 | Operation | Tool | Description |
 |-----------|------|-------------|
 | **CREATE** | `filesystem.write` | Create/write files with content |
+| | `filesystem.create_file` | Create files from templates (py, js, html, md, json, yaml) |
 | | `filesystem.create_directory` | Create directories |
 | | `filesystem.create_spreadsheet` | Create CSV spreadsheets with templates |
 | **READ** | `filesystem.read` | Read file contents |
 | | `filesystem.search` | Search files by name/content |
+| | `filesystem.find` | Advanced search with type filtering and match modes |
 | | `filesystem.list` | List directory contents |
+| | `filesystem.list_enhanced` | Paginated directory listing with smart path aliases |
 | | `filesystem.info` | Get file metadata |
+| | `filesystem.exists` | Check if file/directory exists |
 | **UPDATE** | `filesystem.move` | Move/rename files |
+| | `filesystem.rename` | Rename files/directories in place |
 | | `filesystem.copy` | Copy files/directories |
 | | `filesystem.organize` | Organize files by type |
 | **DELETE** | `filesystem.delete` | Delete files (with confirmation + snapshot) |
+| | `filesystem.safe_delete` | Safe delete with preview and rollback support |
+
+**Smart Path Aliases:**
+- `downloads` → `~/Downloads`
+- `documents` → `~/Documents`
+- `desktop` → `~/Desktop`
+- `pictures` → `~/Pictures`
+- `videos` → `~/Videos`
+- `music` → `~/Music`
+- `home` → `~`
+
+**Pagination:** Directory listings show 10 items at a time with "show more" continuation.
+
+**File Type Classification:** Files are automatically classified as documents, spreadsheets, code, images, etc.
 
 ### Document Operations
 
