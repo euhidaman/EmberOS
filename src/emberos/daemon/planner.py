@@ -1290,7 +1290,7 @@ Now analyze: "{text}"
 
                 try:
                     # Generate content using LLM
-                    logger.info(f"[PLANNER] Generating {length} content about '{topic}'")
+                    logger.info(f"[PLANNER] Generating {length} content about '{topic}' to {filepath}")
 
                     # Determine word count based on length
                     word_count = 150  # medium
@@ -1299,29 +1299,35 @@ Now analyze: "{text}"
                     elif length == "long":
                         word_count = 300
 
-                    generation_prompt = f"Write a {length} {format_type} document (approximately {word_count} words) about: {topic}\n\nProvide clear, informative content. Do not include any meta-commentary about the task."
+                    generation_prompt = f"Write a {length} document (approximately {word_count} words) about: {topic}\n\nProvide clear, informative content. Do not include any meta-commentary about the task."
 
+                    logger.info(f"[PLANNER] Calling LLM to generate content...")
                     response = await self.llm.complete_chat(
                         messages=[{"role": "user", "content": generation_prompt}],
                         temperature=0.7,
                         max_tokens=word_count * 2  # Rough token estimate
                     )
 
+                    logger.info(f"[PLANNER] LLM response received, length: {len(response.content) if response and response.content else 0}")
+
                     if not response or not response.content:
-                        self._add_to_history("assistant", "Sorry, I couldn't generate the content. Please try again.")
-                        return "Sorry, I couldn't generate the content. Please try again."
+                        error_msg = "Sorry, I couldn't generate the content. The LLM didn't return any text. Please try again."
+                        logger.error(f"[PLANNER] {error_msg}")
+                        self._add_to_history("assistant", error_msg)
+                        return error_msg
 
                     content = response.content.strip()
+                    logger.info(f"[PLANNER] Generated content, length: {len(content)} chars")
 
-                    # Now write the file using documents.create tool
+                    # Now write the file
                     import os
                     filepath_expanded = os.path.expanduser(filepath)
+                    logger.info(f"[PLANNER] Writing to file: {filepath_expanded}")
 
                     # Ensure directory exists
                     os.makedirs(os.path.dirname(filepath_expanded), exist_ok=True)
 
-                    # For now, just write to txt/md files directly
-                    # TODO: Use documents.create tool for proper formatting
+                    # Write to txt/md files directly
                     extension = os.path.splitext(filepath_expanded)[1].lower()
 
                     if extension in ['.txt', '.md']:
@@ -1330,10 +1336,11 @@ Now analyze: "{text}"
                                 f.write(f"# {topic.title()}\n\n")
                             f.write(content)
 
-                        response_msg = f"Created {format_type} document: {filepath}\n\nContent preview:\n{content[:200]}..."
+                        logger.info(f"[PLANNER] File written successfully: {filepath_expanded}")
+                        response_msg = f"Created {format_type.upper()} document: {filepath}\n\nContent preview:\n{content[:200]}..."
                     else:
                         # For docx and pdf, we need proper tool support
-                        response_msg = f"Sorry, creating {format_type} files is not yet fully supported. I can create TXT and Markdown files. Would you like me to create a .txt or .md file instead?"
+                        response_msg = f"Sorry, creating {format_type.upper()} files is not yet fully supported. I can create TXT and Markdown files. Would you like me to create a .txt or .md file instead?"
 
                     self._add_to_history("assistant", response_msg)
                     return response_msg
