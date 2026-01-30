@@ -7,6 +7,7 @@ then synthesizes responses from execution results.
 
 from __future__ import annotations
 
+import os
 import json
 import logging
 from typing import Any, Optional
