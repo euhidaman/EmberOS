@@ -588,33 +588,30 @@ Now analyze: "{text}"
         file_read_indicators = ["what's in", "what is in", "read", "open", "show contents", "view", "summarize", "summarise"]
         is_file_read_request = has_file_extension and any(indicator in normalized for indicator in file_read_indicators)
 
+        # Initialize variables
+        corrected_message = normalized
+        intent_type = "unknown"
+        needs_tools = False
+        skip_intent_check = False
+
         if is_file_read_request:
             # This is clearly a file reading request - skip intent classification
             logger.info(f"[PLANNER] Detected file reading request (has extension + read indicator), skipping intent check")
             intent_type = "system_task"
             needs_tools = True
-            corrected_message = normalized
             skip_intent_check = True
-        else:
-            skip_intent_check = False
-
-        # Quick check: if message looks mostly correct, skip LLM intent check
-        # This saves time for well-formed queries
-        skip_intent_check = skip_intent_check or (
-            force_content_flow or
-            len(normalized.split()) <= 2 or  # Very short
-            normalized.startswith(':') or     # Command
-            not any(c.isalpha() for c in normalized)  # No letters
-        )
-
-        corrected_message = normalized
-        intent_type = "unknown"
-        needs_tools = False
-
-        if force_content_flow:
+        elif force_content_flow:
             intent_type = "system_task"
             needs_tools = True
-        elif not skip_intent_check:
+            skip_intent_check = True
+        elif (len(normalized.split()) <= 2 or
+              normalized.startswith(':') or
+              not any(c.isalpha() for c in normalized)):
+            # Very short, command, or no letters - skip intent check
+            skip_intent_check = True
+
+        # Use LLM for intent understanding only if needed
+        if not skip_intent_check:
             # Use LLM to understand intent and correct typos
             try:
                 corrected_message, intent_type, needs_tools = await self._understand_intent_with_llm(normalized)
