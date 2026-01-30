@@ -866,13 +866,20 @@ Now analyze: "{text}"
 
                 logger.info(f"[PLANNER] Content generation: topic='{topic}', format={format_type}, filename={filename}")
 
-                # Create plan that needs confirmation to get filename and location
-                # The plan will be handled by synthesize_response to ask for filename and location first
+                # Store document creation info for next turn
+                self._pending_document_creation = {
+                    "topic": topic,
+                    "format": format_type,
+                    "file_ext": file_ext,
+                    "length": length
+                }
+
+                # Create plan that will be handled by synthesize_response to ask for filename and location
                 return ExecutionPlan(
                     reasoning=f"Need to ask user for filename and location before generating content about '{topic}'",
-                    steps=[],  # Empty - will be filled after user provides filename
-                    requires_confirmation=True,
-                    confirmation_message="DOCUMENT_CREATION_PROMPT",  # Special marker
+                    steps=[],  # Empty plan - will ask for filename in synthesize_response
+                    requires_confirmation=False,  # Don't use confirmation flow
+                    confirmation_message="DOCUMENT_CREATION_PROMPT",  # Special marker for synthesize
                     risk_level="low"
                 )
 
