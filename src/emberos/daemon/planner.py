@@ -1005,34 +1005,69 @@ Now analyze: "{text}"
                     )
 
         # --- FILE READING & SUMMARIZATION ---
-        read_indicators = ["read", "open", "show contents", "what's in", "contents of", "view", "summarize", "summary of", "explain", "what does", "analyze"]
+        read_indicators = ["read", "open", "show contents", "what's in", "what is in", "contents of", "view", "summarize", "summary of", "summarise", "explain", "what does", "analyze"]
         if any(indicator in normalized for indicator in read_indicators):
             import re
 
             # Check if it's a document request (PDF, DOCX, MD, TXT)
             doc_extensions = ['.pdf', '.docx', '.doc', '.txt', '.md', '.markdown']
 
-            # Try to extract filename with extension
-            file_match = re.search(r"(?:read|open|view|contents?\s*of|summarize|summary\s*of|explain|analyze)\s*(?:the\s*)?(?:file\s*|document\s*)?[\"']?([^\s\"']+\.(?:pdf|docx|doc|txt|md|markdown))[\"']?", normalized, re.IGNORECASE)
+            # Try to extract filename/path - support multiple patterns:
+            # 1. "what's in hurricane.pdf"
+            # 2. "summarize /home/user/document.pdf"
+            # 3. "read the file report.docx"
+            # 4. "what is in ~/Documents/notes.txt"
 
-            if file_match:
+            # Pattern 1: Full absolute path (starts with / or ~)
+            abs_path_match = re.search(r"[\"']?((?:/|~)[^\s\"']+\.(?:pdf|docx|doc|txt|md|markdown))[\"']?", normalized, re.IGNORECASE)
+
+            # Pattern 2: Relative filename with extension
+            file_match = re.search(r"(?:read|open|view|contents?\s*of|what'?s?\s*in|what\s*is\s*in|summarize?|summary\s*of|explain|analyze)\s*(?:the\s*)?(?:file\s*|document\s*)?[\"']?([^\s\"'/]+\.(?:pdf|docx|doc|txt|md|markdown))[\"']?", normalized, re.IGNORECASE)
+
+            filepath = None
+            if abs_path_match:
+                # User provided absolute path - use directly
+                filepath = abs_path_match.group(1).strip("\"'")
+                logger.info(f"[PLANNER] Detected absolute path: {filepath}")
+            elif file_match:
+                # User provided relative filename - will need to search or confirm
                 filepath = file_match.group(1).strip("\"'")
+                logger.info(f"[PLANNER] Detected relative filename: {filepath}")
+
+            if filepath:
                 ext = os.path.splitext(filepath)[1].lower()
 
                 # Check if user wants summarization
-                wants_summary = any(word in normalized for word in ["summarize", "summary", "explain", "what does", "analyze", "tell me about"])
+                wants_summary = any(word in normalized for word in ["summarize", "summarise", "summary", "explain", "what does", "analyze", "tell me about"])
 
                 if ext in doc_extensions:
-                    # Use document reader for supported formats
-                    return ExecutionPlan(
-                        reasoning=f"Read and {'summarize' if wants_summary else 'extract content from'} document '{filepath}'.",
-                        steps=[ToolCall(
-                            tool="document.read",
-                            args={"filepath": filepath},
-                            description=f"Read document {filepath}"
-                        )],
-                        requires_confirmation=False
-                    )
+                    # Check if path is absolute or relative
+                    is_absolute = filepath.startswith('/') or filepath.startswith('~')
+
+                    if is_absolute:
+                        # Direct path provided - try to read it
+                        return ExecutionPlan(
+                            reasoning=f"Read and {'summarize' if wants_summary else 'extract content from'} document at '{filepath}'.",
+                            steps=[ToolCall(
+                                tool="document.read",
+                                args={"filepath": filepath},
+                                description=f"Read document {filepath}"
+                            )],
+                            requires_confirmation=False
+                        )
+                    else:
+                        # Relative filename - search for it first, then confirm with user
+                        # We'll use a special marker to indicate we need to find the file first
+                        return ExecutionPlan(
+                            reasoning=f"Search for file '{filepath}' and then read it.",
+                            steps=[ToolCall(
+                                tool="filesystem.find",
+                                args={"query": filepath, "path": "~", "max_results": 10},
+                                description=f"Find file matching '{filepath}'"
+                            )],
+                            requires_confirmation=False,
+                            confirmation_message=f"FUZZY_FILE_READ|{filepath}|{'summary' if wants_summary else 'read'}"
+                        )
                 else:
                     # Fall back to basic file reading for other formats
                     return ExecutionPlan(
@@ -1549,6 +1584,134 @@ Now analyze: "{text}"
                     error_msg = f"Sorry, I encountered an error creating the document: {str(e)}"
                     self._add_to_history("assistant", error_msg)
                     return error_msg
+
+        # Handle fuzzy file read - user provided filename, we searched for it
+        if plan.confirmation_message and plan.confirmation_message.startswith("FUZZY_FILE_READ|"):
+            parts = plan.confirmation_message.split("|")
+            if len(parts) == 3:
+                _, filename, action = parts  # action is 'read' or 'summary'
+
+                # Check if we got search results
+                if len(results) == 1 and results[0].tool == "filesystem.find":
+                    search_result = results[0].result
+
+                    if results[0].success and search_result:
+                        files = search_result.get("files", [])
+
+                        if not files:
+                            # No files found
+                            response = f"I couldn't find any file matching '{filename}'.\n\n"
+                            response += "Please check:\n"
+                            response += "• Spelling of the filename\n"
+                            response += "• File extension (.pdf, .docx, .txt, .md)\n"
+                            response += "• File location (try providing full path like ~/Documents/file.pdf)"
+                            self._add_to_history("assistant", response)
+                            return response
+
+                        elif len(files) == 1:
+                            # Exact match - proceed to read it
+                            file_path = files[0].get("path")
+                            logger.info(f"[PLANNER] Found exact match: {file_path}")
+
+                            # Now read the document
+                            from emberos.tools.document_reader import DocumentReaderTool
+                            reader = DocumentReaderTool()
+
+                            try:
+                                read_result = await reader.execute(file_path)
+
+                                if read_result.success:
+                                    doc_result = read_result.result
+                                    content = doc_result.get("content")
+                                    metadata = doc_result.get("metadata", {})
+
+                                    if action == "summary":
+                                        # Generate summary
+                                        logger.info("[PLANNER] Generating document summary")
+
+                                        if len(content) > 3000:
+                                            content_preview = content[:3000] + "\n\n[Document continues...]"
+                                        else:
+                                            content_preview = content
+
+                                        summary_prompt = f"""Document: {metadata.get('filename', 'Unknown')}
+Type: {metadata.get('extension', 'Unknown')}
+Size: {metadata.get('word_count', 0)} words
+
+Content:
+{content_preview}
+
+Task: Provide a clear, concise summary of this document. Include:
+1. Main topic/purpose
+2. Key points or findings (3-5 bullet points)
+3. Any important conclusions or recommendations
+
+Keep the summary under 200 words."""
+
+                                        summary_response = await self.llm.complete_chat(
+                                            messages=[{"role": "user", "content": summary_prompt}],
+                                            temperature=0.5,
+                                            max_tokens=300
+                                        )
+
+                                        if summary_response and summary_response.content:
+                                            summary = summary_response.content.strip()
+                                            response_msg = f"**Document:** {metadata.get('filename', 'Unknown file')}\n"
+                                            response_msg += f"**Location:** {file_path}\n"
+                                            response_msg += f"**Size:** {metadata.get('word_count', 0)} words\n\n"
+                                            response_msg += f"**Summary:**\n{summary}"
+                                        else:
+                                            response_msg = f"**Document:** {metadata.get('filename', 'Unknown')}\n"
+                                            response_msg += f"**Content preview:**\n{content[:500]}..."
+                                    else:
+                                        # Just show content
+                                        response_msg = f"**Document:** {metadata.get('filename', 'Unknown')}\n"
+                                        response_msg += f"**Location:** {file_path}\n"
+                                        response_msg += f"**Size:** {metadata.get('word_count', 0)} words\n\n"
+
+                                        if len(content) > 1000:
+                                            response_msg += f"**Content preview:**\n{content[:1000]}...\n\n"
+                                            response_msg += f"(Showing first 1000 characters of {len(content)} total)"
+                                        else:
+                                            response_msg += f"**Content:**\n{content}"
+
+                                    self._add_to_history("assistant", response_msg)
+                                    return response_msg
+                                else:
+                                    error_msg = read_result.error or "Failed to read document"
+                                    response_msg = f"Sorry, I couldn't read the document: {error_msg}"
+                                    self._add_to_history("assistant", response_msg)
+                                    return response_msg
+
+                            except Exception as e:
+                                logger.exception(f"[PLANNER] Error reading document: {e}")
+                                response_msg = f"Sorry, I encountered an error reading the file: {str(e)}"
+                                self._add_to_history("assistant", response_msg)
+                                return response_msg
+
+                        else:
+                            # Multiple matches - ask user to clarify
+                            response = f"I found {len(files)} files matching '{filename}':\n\n"
+
+                            for i, file in enumerate(files[:10], 1):
+                                file_path = file.get("path", "Unknown path")
+                                file_size = file.get("size", 0)
+                                size_str = self._format_size(file_size)
+                                response += f"{i}. {file_path} ({size_str})\n"
+
+                            if len(files) > 10:
+                                response += f"\n(Showing 10 of {len(files)} matches)\n"
+
+                            response += f"\nWhich file would you like me to {'summarize' if action == 'summary' else 'read'}? "
+                            response += "Please provide the full path or a more specific filename."
+
+                            self._add_to_history("assistant", response)
+                            return response
+                    else:
+                        # Search failed
+                        response = f"I encountered an error searching for '{filename}': {results[0].error}"
+                        self._add_to_history("assistant", response)
+                        return response
 
         # Handle document creation prompt - need to ask for filename and location
         if plan.confirmation_message == "DOCUMENT_CREATION_PROMPT":
