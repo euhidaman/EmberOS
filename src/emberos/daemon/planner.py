@@ -1756,7 +1756,7 @@ Task: Provide a clear, concise summary of this document. Include:
 2. Key points or findings (3-5 bullet points)
 3. Any important conclusions or recommendations
 
-Keep the summary under 200 words."""
+CRITICAL: Keep the total summary under 200 words. Do NOT include the word "Summary:" at the beginning of your response, as I will add it myself."""
 
                                         summary_response = await self.llm.complete_chat(
                                             messages=[{"role": "user", "content": summary_prompt}],
@@ -2024,7 +2024,7 @@ Task: Provide a clear, concise summary of this document. Include:
 2. Key points or findings (3-5 bullet points)
 3. Any important conclusions or recommendations
 
-Keep the summary under 200 words."""
+CRITICAL: Keep the total summary under 200 words. Do NOT include the word "Summary:" at the beginning of your response, as I will add it myself."""
 
                     try:
                         summary_response = await self.llm.complete_chat(
