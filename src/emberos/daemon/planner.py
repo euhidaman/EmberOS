@@ -203,33 +203,136 @@ class AgentPlanner:
             - intent_type: 'conversation' or 'system_task'
             - needs_tools: True if requires filesystem/system tools
         """
-        # Very short prompt to minimize latency
-        intent_prompt = f"""User said: "{text}"
+        # Comprehensive intent understanding prompt with edge case handling
+        intent_prompt = f"""User input: "{text}"
 
-If there are typos/errors, correct them. Then classify the intent:
+Task: Fix typos/errors and classify intent.
 
-Respond in this exact format:
-CORRECTED: [corrected text]
-TYPE: [conversation|system_task]
+OUTPUT FORMAT (exactly):
+CORRECTED: [fixed text]
+TYPE: [conversation|system_task|unclear]
 TOOLS: [yes|no]
+CONFIDENCE: [high|medium|low]
 
-Examples:
-User: "where ar you?"
+CLASSIFICATION RULES:
+
+1. SYSTEM_TASK (needs tools):
+   - File/folder operations: list, create, delete, move, copy, rename, search, find
+   - System queries: current directory, disk space, processes, system info
+   - Keywords: file, folder, directory, downloads, documents, desktop, create, delete, open, read, write
+   - Examples: "show files", "create folder", "what's in downloads", "current directory"
+
+2. CONVERSATION (no tools):
+   - General knowledge: "what is X", "explain Y", "how does Z work"
+   - Identity: "who are you", "what are you", "what model"
+   - Math: "calculate", "what is 2+2"
+   - Greetings: "hello", "hi", "thanks", "goodbye"
+   - Opinion/advice: "should I", "what do you think"
+   - Examples: "what is gravity", "who are you", "calculate 5*3", "hello"
+
+3. UNCLEAR:
+   - Completely garbled (>70% nonsense)
+   - Empty or meaningless
+   - Conflicting intents
+   - Need clarification
+
+EDGE CASES:
+
+A. AMBIGUOUS QUERIES:
+   - "open budget" → If "budget" is likely a file: system_task + tools=yes
+   - "what is my folder" → system_task (asking for current directory)
+   - "tell me about python" → conversation (general knowledge)
+   - "tell me about my python files" → system_task (needs file search)
+
+B. TYPOS & MISSPELLINGS:
+   - Fix ALL typos: "shwo" → "show", "downlods" → "downloads", "wher ar u" → "where are you"
+   - Handle missing spaces: "showfiles" → "show files"
+   - Handle extra spaces: "show  files" → "show files"
+   - Handle common shortcuts: "pls" → "please", "u" → "you", "r" → "are"
+
+C. MIXED INTENTS:
+   - "what files are in downloads and what is a circle" → system_task (prioritize actionable)
+   - "hello, list files" → system_task (ignore greeting)
+   - "can you create a folder and explain gravity" → system_task (prioritize action)
+
+D. CONTEXT-DEPENDENT:
+   - "show me" → If previous context exists, use it. Otherwise: unclear
+   - "more" → If continuation expected: system_task. Otherwise: unclear
+   - "that one" → Needs context: unclear (but note if it's a follow-up)
+
+E. IMPLICIT SYSTEM TASKS:
+   - "my downloads" → Implies "show my downloads": system_task
+   - "budget file" → Implies "find budget file": system_task
+   - "current location" → Implies "where am I": system_task
+
+F. NATURAL LANGUAGE VARIATIONS:
+   - "got any files here?" → "do you have any files here": system_task
+   - "wanna see my downloads" → "want to see my downloads": system_task
+   - "lemme see that folder" → "let me see that folder": system_task
+
+G. GIBBERISH/UNCLEAR:
+   - "asdfghjkl" → unclear (keyboard mashing)
+   - "........." → unclear (no content)
+   - "" (empty) → unclear
+   - "jfkdsl wqepr nvmz" → unclear (no recognizable words)
+
+H. CONFIDENCE LEVELS:
+   - HIGH: Clear intent, correct grammar, obvious classification
+   - MEDIUM: Some ambiguity but likely correct
+   - LOW: Very ambiguous, multiple interpretations, typos make it unclear
+
+EXAMPLES:
+
+Input: "where ar you?"
 CORRECTED: where are you?
 TYPE: conversation
 TOOLS: no
+CONFIDENCE: high
 
-User: "shwo files in downlods"
+Input: "shwo files in downlods"
 CORRECTED: show files in downloads
 TYPE: system_task
 TOOLS: yes
+CONFIDENCE: high
 
-User: "wat is a circle"
+Input: "wat is a circle"
 CORRECTED: what is a circle
 TYPE: conversation
 TOOLS: no
+CONFIDENCE: high
 
-Now analyze the user's input above."""
+Input: "crete a floder"
+CORRECTED: create a folder
+TYPE: system_task
+TOOLS: yes
+CONFIDENCE: high
+
+Input: "my downloads"
+CORRECTED: show my downloads
+TYPE: system_task
+TOOLS: yes
+CONFIDENCE: medium
+
+Input: "open budget"
+CORRECTED: open budget file
+TYPE: system_task
+TOOLS: yes
+CONFIDENCE: medium
+
+Input: "asdfghjkl"
+CORRECTED: [unable to correct]
+TYPE: unclear
+TOOLS: no
+CONFIDENCE: low
+
+Input: "what is python and list my files"
+CORRECTED: what is python and list my files
+TYPE: system_task
+TOOLS: yes
+CONFIDENCE: medium
+
+Now analyze: "{text}"
+"""
 
         try:
             # Use BitNet with very short timeout
@@ -249,20 +352,42 @@ Now analyze the user's input above."""
             corrected = text
             intent_type = "conversation"
             needs_tools = False
+            confidence = "medium"
 
             for line in content.split('\n'):
                 line = line.strip()
                 if line.startswith('CORRECTED:'):
-                    corrected = line.replace('CORRECTED:', '').strip()
+                    raw_corrected = line.replace('CORRECTED:', '').strip()
+                    # Handle special cases
+                    if raw_corrected and '[unable to correct]' not in raw_corrected.lower():
+                        corrected = raw_corrected
                 elif line.startswith('TYPE:'):
-                    intent_type = line.replace('TYPE:', '').strip()
+                    intent_type = line.replace('TYPE:', '').strip().lower()
                 elif line.startswith('TOOLS:'):
                     needs_tools = line.replace('TOOLS:', '').strip().lower() == 'yes'
+                elif line.startswith('CONFIDENCE:'):
+                    confidence = line.replace('CONFIDENCE:', '').strip().lower()
 
-            logger.info(f"[PLANNER] Intent: '{text}' -> '{corrected}' (type={intent_type}, tools={needs_tools})")
+            # Handle unclear cases
+            if intent_type == "unclear":
+                logger.warning(f"[PLANNER] Intent unclear for: '{text}'")
+                # Return original text and mark as conversation with low confidence
+                # The synthesize_response will handle this gracefully
+                return text, "unclear", False
+
+            # Handle low confidence - be more cautious
+            if confidence == "low":
+                logger.warning(f"[PLANNER] Low confidence intent: '{text}' -> '{corrected}'")
+                # For low confidence, prefer conversation to avoid wrong actions
+                if intent_type == "system_task" and not any(word in text.lower() for word in [
+                    'file', 'folder', 'directory', 'create', 'delete', 'list', 'show'
+                ]):
+                    intent_type = "conversation"
+                    needs_tools = False
+
+            logger.info(f"[PLANNER] Intent: '{text}' -> '{corrected}' (type={intent_type}, tools={needs_tools}, confidence={confidence})")
 
             # Return results
-            was_corrected = (corrected.lower() != text.lower())
             return corrected, intent_type, needs_tools
 
         except Exception as e:
@@ -333,6 +458,15 @@ Now analyze the user's input above."""
         # =====================================================
         # STEP 1: ROUTE BASED ON INTENT
         # =====================================================
+
+        # Handle unclear intent - ask user to clarify
+        if intent_type == "unclear":
+            logger.info("[PLANNER] Intent unclear, asking user to rephrase")
+            return ExecutionPlan(
+                reasoning="User input unclear - ask for clarification.",
+                steps=[],
+                requires_confirmation=False
+            )
 
         # If intent is clearly conversational and needs no tools, return empty plan
         if intent_type == "conversation" and not needs_tools:
@@ -919,6 +1053,17 @@ Now analyze the user's input above."""
         Returns:
             Natural language response for the user
         """
+        # Handle unclear intent - ask for clarification
+        if plan.reasoning == "User input unclear - ask for clarification.":
+            response = (
+                "I'm not quite sure what you're asking. Could you please rephrase? "
+                "For example:\n"
+                "• To see files: 'show files in downloads'\n"
+                "• To ask a question: 'what is gravity'\n"
+                "• To get help: 'what can you do'"
+            )
+            self._add_to_history("assistant", response)
+            return response
 
         # If no tools were executed, generate direct response from LLM
         if not results:
