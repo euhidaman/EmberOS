@@ -860,6 +860,11 @@ Now analyze: "{text}"
 
             logger.info(f"[PLANNER] Detected content creation request: '{normalized}'")
 
+            # Clear any old pending state from previous conversation
+            if self._pending_document_creation is not None:
+                logger.info(f"[PLANNER] Clearing old pending state: {self._pending_document_creation}")
+                self._pending_document_creation = None
+
             # Extract the topic - use multiple strategies
             topic_patterns = [
                 # "about X" where X can be anything until end of string or location keywords
