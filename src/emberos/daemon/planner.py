@@ -1056,18 +1056,48 @@ Now analyze: "{text}"
                             requires_confirmation=False
                         )
                     else:
-                        # Relative filename - search for it first, then confirm with user
-                        # We'll use a special marker to indicate we need to find the file first
-                        return ExecutionPlan(
-                            reasoning=f"Search for file '{filepath}' and then read it.",
-                            steps=[ToolCall(
-                                tool="filesystem.find",
-                                args={"query": filepath, "path": "~", "max_results": 10},
-                                description=f"Find file matching '{filepath}'"
-                            )],
-                            requires_confirmation=False,
-                            confirmation_message=f"FUZZY_FILE_READ|{filepath}|{'summary' if wants_summary else 'read'}"
-                        )
+                        # Relative filename - check if we recently listed a directory that might contain it
+                        # Look through recent conversation history for directory listings
+                        recent_dir = None
+                        for msg in reversed(self._conversation_history[-10:]):  # Check last 10 messages
+                            if msg.get("role") == "assistant":
+                                content = msg.get("content", "")
+                                # Check if this message contains a directory listing with our file
+                                if filepath.lower() in content.lower():
+                                    # Extract directory path from content like "Found X items in /path/to/dir:"
+                                    import re
+                                    dir_match = re.search(r"Found \d+ items in ([^\:]+):", content)
+                                    if dir_match:
+                                        recent_dir = dir_match.group(1).strip()
+                                        logger.info(f"[PLANNER] Found file '{filepath}' mentioned in recent listing of {recent_dir}")
+                                        break
+
+                        if recent_dir:
+                            # User just listed this directory and we saw this file - read it directly
+                            full_path = os.path.join(recent_dir, filepath)
+                            logger.info(f"[PLANNER] Using context - file is at {full_path}")
+                            return ExecutionPlan(
+                                reasoning=f"Read document from recently listed directory: '{full_path}'.",
+                                steps=[ToolCall(
+                                    tool="document.read",
+                                    args={"filepath": full_path},
+                                    description=f"Read document {full_path}"
+                                )],
+                                requires_confirmation=False
+                            )
+                        else:
+                            # No recent context - search for it first, then confirm with user
+                            # We'll use a special marker to indicate we need to find the file first
+                            return ExecutionPlan(
+                                reasoning=f"Search for file '{filepath}' and then read it.",
+                                steps=[ToolCall(
+                                    tool="filesystem.find",
+                                    args={"query": filepath, "path": "~", "max_results": 10},
+                                    description=f"Find file matching '{filepath}'"
+                                )],
+                                requires_confirmation=False,
+                                confirmation_message=f"FUZZY_FILE_READ|{filepath}|{'summary' if wants_summary else 'read'}"
+                            )
                 else:
                     # Fall back to basic file reading for other formats
                     return ExecutionPlan(
@@ -1801,6 +1831,29 @@ Keep the summary under 200 words."""
         # If no tools were executed, generate direct response from LLM
         if not results:
             logger.info(f"[PLANNER] No tools executed, generating direct LLM response for: '{user_message[:50]}...'")
+
+            # SAFEGUARD: Prevent hallucination on file content questions
+            # If user is asking about file contents, we must use tools - never let LLM guess
+            file_content_indicators = [
+                "what's in", "what is in", "contents of", "read", "open",
+                "show contents", "summarize", "summarise"
+            ]
+            asking_about_file = any(indicator in user_message.lower() for indicator in file_content_indicators)
+            mentions_file_extension = any(ext in user_message.lower() for ext in ['.txt', '.pdf', '.docx', '.doc', '.md'])
+
+            if asking_about_file and mentions_file_extension:
+                # User is asking about a file - we should have executed tools
+                # If we're here, it means the tool execution failed
+                error_response = (
+                    "I tried to read the file but encountered an issue. "
+                    "Please make sure:\n"
+                    "• The file exists\n"
+                    "• You have permission to read it\n"
+                    "• The filename is spelled correctly\n\n"
+                    "You can also provide the full path, like: ~/Desktop/filename.txt"
+                )
+                self._add_to_history("assistant", error_response)
+                return error_response
 
             # Use conversation history for better context
             conversation_context = self._build_conversation_context()
