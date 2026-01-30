@@ -48,16 +48,23 @@ class DocumentReaderTool(BaseTool):
         super().__init__()
         self.max_size = 10 * 1024 * 1024  # 10MB limit
 
-    async def execute(self, filepath: str) -> ToolResult:
+    async def execute(self, params: dict[str, Any]) -> ToolResult:
         """
         Read a document and extract its content.
 
         Args:
-            filepath: Path to the document
+            params: Dictionary containing 'filepath'
 
         Returns:
             ToolResult with document content and metadata
         """
+        filepath = params.get("filepath")
+        if not filepath:
+            return ToolResult(
+                success=False,
+                data=None,
+                error="Missing required parameter: filepath"
+            )
         try:
             # Expand path
             filepath = os.path.expanduser(filepath)
@@ -66,7 +73,7 @@ class DocumentReaderTool(BaseTool):
             if not os.path.exists(filepath):
                 return ToolResult(
                     success=False,
-                    result=None,
+                    data=None,
                     error=f"File not found: {filepath}"
                 )
 
@@ -75,7 +82,7 @@ class DocumentReaderTool(BaseTool):
             if file_size > self.max_size:
                 return ToolResult(
                     success=False,
-                    result=None,
+                    data=None,
                     error=f"File too large: {file_size / (1024*1024):.1f}MB (max: {self.max_size / (1024*1024):.1f}MB)"
                 )
 
@@ -100,14 +107,14 @@ class DocumentReaderTool(BaseTool):
             else:
                 return ToolResult(
                     success=False,
-                    result={"metadata": metadata},
+                    data={"metadata": metadata},
                     error=f"Unsupported file format: {ext}. Supported: .txt, .md, .pdf, .docx"
                 )
 
             if content is None:
                 return ToolResult(
                     success=False,
-                    result={"metadata": metadata},
+                    data={"metadata": metadata},
                     error="Failed to extract content from file"
                 )
 
@@ -116,7 +123,7 @@ class DocumentReaderTool(BaseTool):
 
             return ToolResult(
                 success=True,
-                result={
+                data={
                     "success": True,
                     "content": content,
                     "metadata": metadata
@@ -128,7 +135,7 @@ class DocumentReaderTool(BaseTool):
             logger.exception(f"Error reading document {filepath}: {e}")
             return ToolResult(
                 success=False,
-                result=None,
+                data=None,
                 error=str(e)
             )
 
