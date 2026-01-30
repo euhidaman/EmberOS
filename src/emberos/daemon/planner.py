@@ -439,10 +439,15 @@ Now analyze: "{text}"
         # Add user message to history
         self._add_to_history("user", user_message)
 
+        # Log pending state at the very start
+        logger.info(f"[PLANNER] create_plan called with message: '{user_message}'")
+        logger.info(f"[PLANNER] _pending_document_creation state: {self._pending_document_creation}")
+
         # =====================================================
         # STEP -1: CHECK IF WE'RE WAITING FOR DOCUMENT CREATION INFO
         # =====================================================
         if self._pending_document_creation is not None:
+            logger.info(f"[PLANNER] Found pending document creation: {self._pending_document_creation}")
             import re
 
             normalized = user_message.strip().lower()
@@ -459,6 +464,7 @@ Now analyze: "{text}"
             if match:
                 filename = match.group(1)
                 location = match.group(2)
+                logger.info(f"[PLANNER] Extracted via location_pattern - filename: '{filename}', location: '{location}'")
             else:
                 # Try simpler patterns
                 # Just filename mentioned
@@ -466,12 +472,16 @@ Now analyze: "{text}"
                 filename_match = re.search(filename_pattern, normalized)
                 if filename_match:
                     filename = filename_match.group(1)
+                    logger.info(f"[PLANNER] Extracted filename via simple pattern: '{filename}'")
 
                 # Location keywords
                 for loc_keyword in ["desktop", "downloads", "documents", "pictures", "videos", "music"]:
                     if loc_keyword in normalized:
                         location = loc_keyword
+                        logger.info(f"[PLANNER] Found location keyword: '{location}'")
                         break
+
+            logger.info(f"[PLANNER] Final extraction - filename: '{filename}', location: '{location}'")
 
             # If we got filename info, proceed with document creation
             if not filename or not location:
