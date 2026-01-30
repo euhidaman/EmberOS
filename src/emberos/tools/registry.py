@@ -83,6 +83,7 @@ class ToolRegistry:
             "emberos.tools.builtin.notes",
             "emberos.tools.builtin.applications",
             "emberos.tools.builtin.system",
+            "emberos.tools.document_reader",
         ]
 
         for module_name in builtin_modules:

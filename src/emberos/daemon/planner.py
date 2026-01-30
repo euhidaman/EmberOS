@@ -1004,22 +1004,46 @@ Now analyze: "{text}"
                         requires_confirmation=False
                     )
 
-        # --- FILE READING ---
-        read_indicators = ["read", "open", "show contents", "what's in", "contents of", "view"]
+        # --- FILE READING & SUMMARIZATION ---
+        read_indicators = ["read", "open", "show contents", "what's in", "contents of", "view", "summarize", "summary of", "explain", "what does", "analyze"]
         if any(indicator in normalized for indicator in read_indicators):
             import re
-            file_match = re.search(r"(?:read|open|view|contents?\s*of)\s*(?:the\s*)?(?:file\s*)?[\"']?(\S+\.\w+)[\"']?", normalized)
+
+            # Check if it's a document request (PDF, DOCX, MD, TXT)
+            doc_extensions = ['.pdf', '.docx', '.doc', '.txt', '.md', '.markdown']
+
+            # Try to extract filename with extension
+            file_match = re.search(r"(?:read|open|view|contents?\s*of|summarize|summary\s*of|explain|analyze)\s*(?:the\s*)?(?:file\s*|document\s*)?[\"']?([^\s\"']+\.(?:pdf|docx|doc|txt|md|markdown))[\"']?", normalized, re.IGNORECASE)
+
             if file_match:
                 filepath = file_match.group(1).strip("\"'")
-                return ExecutionPlan(
-                    reasoning=f"Read contents of file '{filepath}'.",
-                    steps=[ToolCall(
-                        tool="filesystem.read",
-                        args={"path": filepath, "max_size": 50000},
-                        description=f"Read file {filepath}"
-                    )],
-                    requires_confirmation=False
-                )
+                ext = os.path.splitext(filepath)[1].lower()
+
+                # Check if user wants summarization
+                wants_summary = any(word in normalized for word in ["summarize", "summary", "explain", "what does", "analyze", "tell me about"])
+
+                if ext in doc_extensions:
+                    # Use document reader for supported formats
+                    return ExecutionPlan(
+                        reasoning=f"Read and {'summarize' if wants_summary else 'extract content from'} document '{filepath}'.",
+                        steps=[ToolCall(
+                            tool="document.read",
+                            args={"filepath": filepath},
+                            description=f"Read document {filepath}"
+                        )],
+                        requires_confirmation=False
+                    )
+                else:
+                    # Fall back to basic file reading for other formats
+                    return ExecutionPlan(
+                        reasoning=f"Read contents of file '{filepath}'.",
+                        steps=[ToolCall(
+                            tool="filesystem.read",
+                            args={"path": filepath, "max_size": 50000},
+                            description=f"Read file {filepath}"
+                        )],
+                        requires_confirmation=False
+                    )
 
         # --- FILE DELETION ---
         delete_indicators = ["delete", "remove", "trash", "erase"]
@@ -1668,6 +1692,85 @@ Now analyze: "{text}"
 
         # We have tool results - format them nicely
         logger.info(f"[PLANNER] Synthesizing response for {len(results)} tool results")
+
+        # Check if this is a document reading result that needs summarization
+        if len(results) == 1 and results[0].tool == "document.read" and results[0].success:
+            doc_result = results[0].result
+
+            if doc_result.get("success") and doc_result.get("content"):
+                content = doc_result["content"]
+                metadata = doc_result.get("metadata", {})
+
+                # Check if user wants summarization
+                wants_summary = any(word in user_message.lower() for word in [
+                    "summarize", "summary", "explain", "what does", "analyze", "tell me about"
+                ])
+
+                if wants_summary:
+                    # Generate summary using LLM
+                    logger.info("[PLANNER] Generating document summary")
+
+                    # Truncate content if too long (keep first 3000 chars for context)
+                    if len(content) > 3000:
+                        content_preview = content[:3000] + "\n\n[Document continues...]"
+                    else:
+                        content_preview = content
+
+                    summary_prompt = f"""Document: {metadata.get('filename', 'Unknown')}
+Type: {metadata.get('extension', 'Unknown')}
+Size: {metadata.get('word_count', 0)} words
+
+Content:
+{content_preview}
+
+Task: Provide a clear, concise summary of this document. Include:
+1. Main topic/purpose
+2. Key points or findings (3-5 bullet points)
+3. Any important conclusions or recommendations
+
+Keep the summary under 200 words."""
+
+                    try:
+                        summary_response = await self.llm.complete_chat(
+                            messages=[{"role": "user", "content": summary_prompt}],
+                            temperature=0.5,
+                            max_tokens=300
+                        )
+
+                        if summary_response and summary_response.content:
+                            summary = summary_response.content.strip()
+                            response_msg = f"**Document:** {metadata.get('filename', 'Unknown file')}\n"
+                            response_msg += f"**Size:** {metadata.get('word_count', 0)} words\n"
+                            response_msg += f"**Type:** {metadata.get('extension', 'unknown').upper()}\n\n"
+                            response_msg += f"**Summary:**\n{summary}"
+                        else:
+                            # Fallback to showing content preview
+                            response_msg = f"**Document:** {metadata.get('filename', 'Unknown')}\n"
+                            response_msg += f"**Content preview:**\n{content[:500]}..."
+                    except Exception as e:
+                        logger.error(f"[PLANNER] Failed to generate summary: {e}")
+                        # Show content preview as fallback
+                        response_msg = f"**Document:** {metadata.get('filename', 'Unknown')}\n"
+                        response_msg += f"**Content preview:**\n{content[:500]}..."
+                else:
+                    # Just show the content (or preview if too long)
+                    response_msg = f"**Document:** {metadata.get('filename', 'Unknown')}\n"
+                    response_msg += f"**Size:** {metadata.get('word_count', 0)} words\n\n"
+
+                    if len(content) > 1000:
+                        response_msg += f"**Content preview:**\n{content[:1000]}...\n\n"
+                        response_msg += f"(Showing first 1000 characters of {len(content)} total)"
+                    else:
+                        response_msg += f"**Content:**\n{content}"
+
+                self._add_to_history("assistant", response_msg)
+                return response_msg
+            else:
+                # Document reading failed
+                error_msg = doc_result.get("error", "Failed to read document")
+                response_msg = f"Sorry, I couldn't read the document: {error_msg}"
+                self._add_to_history("assistant", response_msg)
+                return response_msg
 
         # First, try to format results directly without LLM (faster)
         direct_response = self._format_results_fallback(results)
