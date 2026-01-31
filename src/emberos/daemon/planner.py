@@ -1129,10 +1129,10 @@ Now analyze: "{text}"
             # 4. "what is in ~/Documents/notes.txt"
 
             # Pattern 1: Full absolute path (starts with / or ~)
-            abs_path_match = re.search(r"[\"']?((?:/|~)[^\s\"']+\.(?:pdf|docx|doc|txt|md|markdown))[\"']?", normalized, re.IGNORECASE)
+            abs_path_match = re.search(r"[\"']?((?:/|~)[^\s\"']+\.(?:pdf|docx|doc|txt|md|markdown))[\"']?", user_message, re.IGNORECASE)
 
             # Pattern 2: Relative filename with extension
-            file_match = re.search(r"(?:read|open|view|contents?\s*of|what'?s?\s*in|what\s*is\s*in|summaris[ez]e?|summary\s*of|explain|analyze)\s*(?:the\s*)?(?:file\s*|document\s*)?[\"']?([^\s\"'/]+\.(?:pdf|docx|doc|txt|md|markdown))[\"']?", normalized, re.IGNORECASE)
+            file_match = re.search(r"(?:read|open|view|contents?\s*of|what'?s?\s*in|what\s*is\s*in|summaris[ez]e?|summary\s*of|explain|analyze)\s*(?:the\s*)?(?:file\s*|document\s*)?[\"']?([^\s\"'/]+\.(?:pdf|docx|doc|txt|md|markdown))[\"']?", user_message, re.IGNORECASE)
 
             filepath = None
             if abs_path_match:
@@ -1145,7 +1145,7 @@ Now analyze: "{text}"
                 logger.info(f"[PLANNER] Detected relative filename: {filepath}")
             else:
                 # Fallback: Just look for any filename with extension in the message
-                fallback_match = re.search(r"[\"']?([^\s\"'/]+\.(?:pdf|docx|doc|txt|md|markdown))[\"']?", normalized, re.IGNORECASE)
+                fallback_match = re.search(r"[\"']?([^\s\"'/]+\.(?:pdf|docx|doc|txt|md|markdown))[\"']?", user_message, re.IGNORECASE)
                 if fallback_match:
                     filepath = fallback_match.group(1).strip("\"'")
                     logger.info(f"[PLANNER] Fallback detected filename: {filepath}")
@@ -1185,6 +1185,16 @@ Now analyze: "{text}"
                                     dir_match = re.search(r"Found \d+ items in ([^\:]+):", content)
                                     if dir_match:
                                         recent_dir = dir_match.group(1).strip()
+                                        
+                                        # Correct case of the filename from the listing itself
+                                        # This is critical on case-sensitive filesystems (Linux)
+                                        exact_match = re.search(re.escape(filepath), content, re.IGNORECASE)
+                                        if exact_match:
+                                            corrected_filepath = exact_match.group(0)
+                                            if corrected_filepath != filepath:
+                                                logger.info(f"[PLANNER] Corrected filename case from context: '{filepath}' -> '{corrected_filepath}'")
+                                                filepath = corrected_filepath
+                                        
                                         logger.info(f"[PLANNER] Found file '{filepath}' mentioned in recent listing of {recent_dir}")
                                         break
 
@@ -1230,8 +1240,8 @@ Now analyze: "{text}"
         delete_indicators = ["delete", "remove", "trash", "erase", "delte", "dtle", "deleat", "del "]
         if any(indicator in normalized for indicator in delete_indicators):
             import re
-            # Match common delete patterns (including typos)
-            file_match = re.search(r"(?:delete|remove|trash|erase|delte|dtle|deleat|del)\s*(?:the\s*)?(?:file\s*)?[\"']?([^\s\"']+)[\"']?", normalized)
+            # Match common delete patterns (including typos) - use user_message to preserve case
+            file_match = re.search(r"(?:delete|remove|trash|erase|delte|dtle|deleat|del)\s*(?:the\s*)?(?:file\s*)?[\"']?([^\s\"']+)[\"']?", user_message, re.IGNORECASE)
             if file_match:
                 filepath = file_match.group(1).strip("\"'")
                 
@@ -1269,7 +1279,7 @@ Now analyze: "{text}"
         rename_indicators = ["rename", "change name"]
         if any(indicator in normalized for indicator in rename_indicators):
             import re
-            rename_match = re.search(r"(?:rename|change\s*name\s*of)\s*[\"']?(\S+)[\"']?\s*(?:to|as)\s*[\"']?(\S+)[\"']?", normalized)
+            rename_match = re.search(r"(?:rename|change\s*name\s*of)\s*[\"']?(\S+)[\"']?\s*(?:to|as)\s*[\"']?(\S+)[\"']?", user_message, re.IGNORECASE)
             if rename_match:
                 old_name = rename_match.group(1).strip("\"'")
                 new_name = rename_match.group(2).strip("\"'")
@@ -1289,7 +1299,7 @@ Now analyze: "{text}"
         move_indicators = ["move", "mv"]
         if any(indicator in normalized for indicator in move_indicators):
             import re
-            move_match = re.search(r"(?:move|mv)\s*[\"']?(\S+)[\"']?\s*(?:to|into)\s*[\"']?(\S+)[\"']?", normalized)
+            move_match = re.search(r"(?:move|mv)\s*[\"']?(\S+)[\"']?\s*(?:to|into)\s*[\"']?(\S+)[\"']?", user_message, re.IGNORECASE)
             if move_match:
                 source = move_match.group(1).strip("\"'")
                 destination = move_match.group(2).strip("\"'")
@@ -1309,7 +1319,7 @@ Now analyze: "{text}"
         copy_indicators = ["copy", "duplicate", "cp"]
         if any(indicator in normalized for indicator in copy_indicators):
             import re
-            copy_match = re.search(r"(?:copy|duplicate|cp)\s*[\"']?(\S+)[\"']?\s*(?:to|as)\s*[\"']?(\S+)[\"']?", normalized)
+            copy_match = re.search(r"(?:copy|duplicate|cp)\s*[\"']?(\S+)[\"']?\s*(?:to|as)\s*[\"']?(\S+)[\"']?", user_message, re.IGNORECASE)
             if copy_match:
                 source = copy_match.group(1).strip("\"'")
                 destination = copy_match.group(2).strip("\"'")
@@ -1327,7 +1337,7 @@ Now analyze: "{text}"
         info_indicators = ["info", "details", "properties", "size of", "when was"]
         if any(indicator in normalized for indicator in info_indicators):
             import re
-            file_match = re.search(r"(?:info|details|properties|size)\s*(?:of|about)?\s*[\"']?(\S+)[\"']?", normalized)
+            file_match = re.search(r"(?:info|details|properties|size)\s*(?:of|about)?\s*[\"']?(\S+)[\"']?", user_message, re.IGNORECASE)
             if file_match:
                 filepath = file_match.group(1).strip("\"'")
                 return ExecutionPlan(
