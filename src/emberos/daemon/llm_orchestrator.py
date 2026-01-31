@@ -79,7 +79,8 @@ class LLMOrchestrator:
         self.session: Optional[aiohttp.ClientSession] = None
 
         # Dual model setup
-        self._text_url = "http://127.0.0.1:38080"  # BitNet
+        # Use config.server_url for BitNet (text model), default to 38080 if not set properly
+        self._text_url = self.config.server_url or "http://127.0.0.1:38080"
         self._vision_url = "http://127.0.0.1:11434"  # Qwen2.5-VL
 
         self._text_connected = False
@@ -92,6 +93,7 @@ class LLMOrchestrator:
         """Start the LLM orchestrator."""
         logger.info("Starting LLM orchestrator...")
 
+        # Use 120s timeout from config
         timeout = aiohttp.ClientTimeout(total=self.config.timeout)
         self.session = aiohttp.ClientSession(timeout=timeout)
 
@@ -102,7 +104,7 @@ class LLMOrchestrator:
         if not self._text_connected and not self._vision_connected:
             logger.error("No LLM servers available!")
         elif not self._text_connected:
-            logger.warning("BitNet text model not available, will use vision model for all tasks")
+            logger.warning(f"BitNet text model not available at {self._text_url}, will use vision model for all tasks")
         elif not self._vision_connected:
             logger.warning("Vision model not available, image tasks will fail")
 
@@ -133,10 +135,10 @@ class LLMOrchestrator:
                     except Exception:
                         self._text_model_name = "BitNet"
 
-                    logger.info(f"Connected to text model: {self._text_model_name} (port 38080)")
+                    logger.info(f"Connected to text model: {self._text_model_name} at {self._text_url}")
                     return True
         except Exception as e:
-            logger.debug(f"Text model not available: {e}")
+            logger.debug(f"Text model not available at {self._text_url}: {e}")
             self._text_connected = False
 
         return False
@@ -238,8 +240,8 @@ class LLMOrchestrator:
         
         try:
             logger.debug("Starting request...")
-            # Use shorter 30s timeout to detect hangs quickly
-            request_timeout = aiohttp.ClientTimeout(total=30)
+            # Use configurable timeout (default 120s) instead of hardcoded 30s
+            request_timeout = aiohttp.ClientTimeout(total=self.config.timeout)
             async with self.session.post(
                 f"{server_url}/completion",
                 json=payload,
@@ -264,7 +266,7 @@ class LLMOrchestrator:
                 )
 
         except asyncio.TimeoutError:
-            logger.error(f"Request to {model_type.value} model timed out after 30s - server may be hung")
+            logger.error(f"Request to {model_type.value} model timed out after {self.config.timeout}s - server may be hung")
             # Mark model as disconnected so future requests fallback
             if model_type == ModelType.TEXT:
                 self._text_connected = False

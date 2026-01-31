@@ -944,7 +944,7 @@ Now analyze: "{text}"
             # Try to extract filename from query
             search_match = re.search(
                 r"(?:find|search|locate|look\s*for|where\s*is)\s*(?:my\s*)?(?:a\s*)?(?:file\s*)?(?:called\s*|named\s*)?[\"']?(\S+)[\"']?",
-                normalized
+                user_message, re.IGNORECASE
             )
             if search_match:
                 query = search_match.group(1).strip("\"'")
