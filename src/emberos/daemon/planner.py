@@ -1762,7 +1762,8 @@ Now analyze: "{text}"
                     search_result = results[0].result
 
                     if results[0].success and search_result:
-                        files = search_result.get("files", [])
+                        # AdvancedFileSearchTool uses 'results' key
+                        files = search_result.get("results", []) or search_result.get("files", [])
 
                         if not files:
                             # No files found
@@ -1784,7 +1785,7 @@ Now analyze: "{text}"
                             reader = DocumentReaderTool()
 
                             try:
-                                read_result = await reader.execute(file_path)
+                                read_result = await reader.execute({"filepath": file_path})
 
                                 if read_result.success:
                                     doc_result = read_result.result
@@ -1795,8 +1796,9 @@ Now analyze: "{text}"
                                         # Generate summary
                                         logger.info("[PLANNER] Generating document summary")
 
-                                        if len(content) > 3000:
-                                            content_preview = content[:3000] + "\n\n[Document continues...]"
+                                        # Use more context for a better summary (up to 15k chars)
+                                        if len(content) > 15000:
+                                            content_preview = content[:15000] + "\n\n[Document continues...]"
                                         else:
                                             content_preview = content
 
@@ -2108,9 +2110,9 @@ CRITICAL: Keep the total summary under 200 words. Do NOT include the word "Summa
                     # Generate summary using LLM
                     logger.info("[PLANNER] Generating document summary")
 
-                    # Truncate content if too long (keep first 3000 chars for context)
-                    if len(content) > 3000:
-                        content_preview = content[:3000] + "\n\n[Document continues...]"
+                    # Truncate content if too long (increase to 15000 chars for better context)
+                    if len(content) > 15000:
+                        content_preview = content[:15000] + "\n\n[Document continues...]"
                     else:
                         content_preview = content
 

@@ -192,10 +192,18 @@ class EmberDaemon:
 
                 duration_ms = int((datetime.now() - start_time).total_seconds() * 1000)
 
+                # Check if the tool reported a failure in its result
+                tool_success = True
+                error_msg = None
+                if isinstance(result, dict) and result.get("success") is False:
+                    tool_success = False
+                    error_msg = result.get("error")
+
                 tool_result = ToolResult(
                     tool=step.tool,
-                    success=True,
+                    success=tool_success,
                     result=result,
+                    error=error_msg,
                     duration_ms=duration_ms
                 )
 
@@ -204,8 +212,9 @@ class EmberDaemon:
 
                 # Emit tool completed signal
                 self._emit_signal('tool_completed', step.tool, {
-                    "success": True,
+                    "success": tool_success,
                     "result": result,
+                    "error": error_msg,
                     "duration_ms": duration_ms
                 })
 

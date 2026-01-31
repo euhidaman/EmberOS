@@ -46,7 +46,7 @@ class DocumentReaderTool(BaseTool):
     def __init__(self):
         """Initialize document reader."""
         super().__init__()
-        self.max_size = 10 * 1024 * 1024  # 10MB limit
+        self.max_size = 25 * 1024 * 1024  # 25MB limit
 
     async def execute(self, params: dict[str, Any]) -> ToolResult:
         """

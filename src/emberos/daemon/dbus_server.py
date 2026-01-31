@@ -419,7 +419,18 @@ class EmberDBusServer:
     def emit_tool_completed(self, tool_name: str, result: Any) -> None:
         """Emit tool execution completed signal."""
         if self.interface:
-            self.interface.ToolExecutionCompleted(tool_name, json.dumps(result))
+            # Ensure result is JSON serializable
+            serializable_result = result
+            if hasattr(result, 'to_dict'):
+                serializable_result = result.to_dict()
+            elif isinstance(result, dict):
+                # Recursively check for ToolResult objects in the dict
+                serializable_result = {
+                    k: (v.to_dict() if hasattr(v, 'to_dict') else v)
+                    for k, v in result.items()
+                }
+            
+            self.interface.ToolExecutionCompleted(tool_name, json.dumps(serializable_result))
 
     @property
     def is_running(self) -> bool:

@@ -247,7 +247,7 @@ class ToolRegistry:
             self._update_stats(name, True, duration_ms)
 
             if isinstance(result, ToolResult):
-                return result.data if result.success else result
+                return result.data if result.success else result.to_dict()
             return result
 
         except Exception as e:
